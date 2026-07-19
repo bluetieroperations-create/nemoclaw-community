@@ -27,6 +27,10 @@ Image: ghcr.io/astral-sh/uv:latest
 License: Apache-2.0 OR MIT
 URL: https://github.com/astral-sh/uv
 
+Image: vllm/vllm-openai
+License: Apache-2.0 and included component licenses
+URL: https://github.com/vllm-project/vllm
+
 ================================================================================
 Docker Compose Images
 ================================================================================
@@ -62,6 +66,22 @@ URL: https://github.com/cli/cli
 Package: git
 License: GPL-2.0
 URL: https://git-scm.com/
+
+Package: Blender
+License: GPL-3.0-or-later
+URL: https://www.blender.org/
+
+Package: FFmpeg
+License: LGPL-2.1-or-later or GPL-2.0-or-later, depending on build options
+URL: https://ffmpeg.org/
+
+Package: NoMachine
+License: Proprietary; see vendor terms
+URL: https://www.nomachine.com/licensing
+
+Package: NVIDIA Container Toolkit
+License: Apache-2.0
+URL: https://github.com/NVIDIA/nvidia-container-toolkit
 
 Package: libpython
 License: Python Software Foundation License
@@ -139,6 +159,10 @@ Package: pyyaml
 License: MIT
 URL: https://github.com/yaml/pyyaml
 
+Package: mcp-proxy
+License: MIT
+URL: https://github.com/sparfenyuk/mcp-proxy
+
 Package: slack-bolt
 License: MIT
 URL: https://github.com/slackapi/bolt-python
@@ -170,6 +194,22 @@ URL: https://github.com/NousResearch/hermes-agent
 Project: NVIDIA/NeMo-Flow patch archive
 License: Apache-2.0
 URL: https://github.com/NVIDIA/NeMo-Flow
+
+Project: NVIDIA-Omniverse/omniverse-labs ov-blender-example
+License: Apache-2.0 and included runtime component notices
+URL: https://github.com/NVIDIA-Omniverse/omniverse-labs/tree/main/projects/ov-blender-example
+
+Project: ahujasid/blender-mcp
+License: MIT
+URL: https://github.com/ahujasid/blender-mcp
+
+Project: lfdevs Blender Linux ARM64 build
+License: GPL-3.0-or-later and included Blender notices
+URL: https://github.com/lfdevs/blender_linux_arm64
+
+Model: NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+License: NVIDIA Open Model License
+URL: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
 
 Service: GitHub API
 Terms: See provider terms

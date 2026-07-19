@@ -1,0 +1,11 @@
+.DS_Store
+out/
+run/
+tmp/
+.venv/
+*.log
+*.pid
+*.zip
+*.tar.xz
+*.tar.gz
+*.blend1

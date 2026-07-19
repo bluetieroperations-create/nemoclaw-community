@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+interface:
+  display_name: "Blender Host/Sandbox Boundary"
+  short_description: "Route Blender work across sandbox and host filesystems safely."
+  default_prompt: "Classify this Blender task by execution surface, use only paths visible to that surface, and return transfer requirements or verified receipts."

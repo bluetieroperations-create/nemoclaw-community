@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, Tavily AI. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+watchlist: ai-policy
+topics:
+  - id: ai-regulation-enforcement
+    query: "AI regulation enforcement action compliance obligations"
+    seed_sources: [ec.europa.eu, ftc.gov, ico.org.uk]
+    exclude_domains: [wikipedia.org]
+    lookback_days: 30
+    why_it_matters: "AI enforcement actions and regulator guidance can change compliance expectations for model providers and deployers"
+
+  - id: model-safety-standards
+    query: "AI model safety standard evaluation guidance released"
+    seed_sources: [nist.gov, iso.org, oecd.ai]
+    exclude_domains: [wikipedia.org]
+    lookback_days: 30
+    why_it_matters: "New AI safety standards and evaluation guidance influence governance, red-teaming, and release-readiness requirements"
+
+  - id: ai-copyright-litigation
+    query: "generative AI copyright lawsuit ruling settlement"
+    seed_sources: [copyright.gov, uscourts.gov]
+    exclude_domains: [wikipedia.org, reddit.com]
+    lookback_days: 30
+    why_it_matters: "AI copyright litigation can affect training-data policies, product risk, and customer contract language"

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, Tavily AI. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+watchlist: regulatory
+topics:
+  - id: pfas-restriction-updates
+    query: "PFAS restriction proposal update"
+    seed_sources: [echa.europa.eu]
+    exclude_domains: [wikipedia.org]
+    lookback_days: 30
+    why_it_matters: "Changes to EU PFAS restriction proposals affect materials, chemicals, and product compliance obligations"
+
+  - id: ofac-sanctions-designations
+    query: "new sanctions designation specially designated nationals list update"
+    seed_sources: [ofac.treasury.gov]
+    exclude_domains: [wikipedia.org]
+    lookback_days: 14
+    why_it_matters: "New OFAC designations can immediately affect screening obligations and permissible counterparties"
+
+  - id: fda-device-recalls
+    query: "medical device recall notice"
+    seed_sources: [fda.gov]
+    exclude_domains: [wikipedia.org]
+    lookback_days: 30
+    why_it_matters: "FDA device recalls can affect supply chains and require prompt compliance action for affected products"
