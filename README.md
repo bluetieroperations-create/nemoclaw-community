@@ -23,6 +23,7 @@ The table below lists examples maintained in this repository. Additional NemoCla
 | Hermes Brev Launchable | Provides a notebook path from a fresh Brev CPU instance to a working NemoClaw-managed Hermes sandbox, including installation, onboarding, API verification, and terminal access. | [Guide](examples/hermes-launchable/README.md) |
 | Harness Engineering Playground | A CLI dev tool (not an OpenShell blueprint) for automated, eval-driven harness profile improvement, with pluggable target-framework adapters and optimization techniques. | [Guide](examples/harness-engineering-playground/README.md) |
 | Retail Assistant | Deploys a Telegram-based retail management assistant that maps users to store roles, queries retail data through a FastAPI service, and runs the agent inside an OpenShell sandbox. | [Guide](examples/retail-assistant/README.md) |
+| BLACK_WALL Preflight Guardrail | Adds a pre-action risk gate to an OpenClaw agent: a `before_tool_call` hook screens every tool call through the external BLACK_WALL forecast service (GO / CAUTION / STOP + a signed receipt) before it runs. Includes an OpenShell provider + policy so the API key is injected at proxy egress and never enters the sandbox. | [Guide](examples/blackwall-guard/README.md) |
 
 ## Getting Started
 

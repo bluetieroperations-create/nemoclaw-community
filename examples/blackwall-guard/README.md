@@ -14,9 +14,13 @@ This is defense-in-depth: it catches dangerous actions a compromised, mistaken, 
 prompt-injected agent might attempt — destructive shell commands, irreversible
 writes, data exfiltration, fund movement — independent of the model's own judgment.
 
-> This is an independent, third-party integration contributed as a community
-> example. It calls the external [BLACK_WALL](https://blackwalltier.com) service and
-> is not a supported part of NemoClaw core.
+> **Third-party integration — requirements & support.** This is an independent
+> community example, **not** a supported part of NemoClaw core. It calls the external
+> [BLACK_WALL](https://blackwalltier.com) service and **requires a BLACK_WALL API
+> key** — sign up at [blackwalltier.com](https://blackwalltier.com) (a free tier is
+> available; usage-based pricing applies above it). **Support** for this integration
+> and the service is provided by BlueTier Operations, not NVIDIA — contact
+> <bluetier.operations@gmail.com> or [blackwalltier.com](https://blackwalltier.com).
 
 ## What it does
 
@@ -42,6 +46,8 @@ writes, data exfiltration, fund movement — independent of the model's own judg
 | `skills/blackwall-policy/SKILL.md` | Guidance for tuning enforce/observe and the gate policy. |
 | `skills/blackwall-verify/SKILL.md` | How to independently verify a decision receipt. |
 | `index.test.ts` | Vitest suite pinning the gate's decision state machine, the HTTPS-only credential guard, and the proxy CONNECT-header cap. |
+| `providers/blackwall.yaml` | OpenShell provider profile that injects the API key at the L7 proxy on egress, so the key never enters the sandbox (see *Recommended deployment*). |
+| `policy.yaml` | OpenShell sandbox network policy allowing egress only to the BLACK_WALL forecast endpoints. |
 
 ## Enable & configure
 
@@ -60,7 +66,30 @@ Disabled by default. Enable it for an agent and provide an API key:
 > environment, so `BLACKWALL_API_KEY` can be empty even when a login shell sees it.
 > The plugin also resolves the key from a file — `$BLACKWALL_API_KEY_FILE`,
 > `$OPENCLAW_HOME/.openclaw/blackwall.key`, or `$HOME/.openclaw/blackwall.key` — so
-> you can deliver it as a file the agent can read.
+> you can deliver it as a file the agent can read. That is the *simple* option; the
+> *recommended* one below keeps the key out of the sandbox entirely.
+
+## Recommended deployment (NemoClaw) — keep the key out of the sandbox
+
+The strongest setup never places the API key inside the sandbox at all. Rather than
+delivering the key to the agent (env var or file, above), inject it at the OpenShell
+L7 proxy on egress. Two files here express this:
+
+- **`providers/blackwall.yaml`** — an OpenShell provider profile with
+  `auth_style: bearer`. The sandbox's `BLACKWALL_API_KEY` holds only an OpenShell
+  placeholder; the L7 proxy substitutes the real value into the `Authorization`
+  header as the request leaves the sandbox. A compromised or prompt-injected agent
+  inside the sandbox can never read the credential.
+- **`policy.yaml`** — a sandbox network policy that explicitly allows egress to
+  `blackwalltier.com:443`, scoped to only the two forecast endpoints the plugin
+  calls (`POST /api/v1/forecast` and `POST /api/v1/forecast/<id>/outcome`).
+
+The plugin itself needs no change: it still sends `Authorization: Bearer
+$BLACKWALL_API_KEY`, but in the sandbox that value is the placeholder, and the real
+key exists only host-side. This mirrors the provider + policy pattern used by the
+[`personal-community-sentiment-triage`](../personal-community-sentiment-triage/)
+example. Merge `policy.yaml`'s `network_policies` entry into your sandbox policy and
+import `providers/blackwall.yaml` alongside your other OpenShell providers.
 
 ## Security properties
 
