@@ -45,7 +45,11 @@ writes, data exfiltration, fund movement — independent of the model's own judg
 | `openclaw.plugin.json` | Plugin manifest (config schema, defaults). |
 | `skills/blackwall-policy/SKILL.md` | Guidance for tuning enforce/observe and the gate policy. |
 | `skills/blackwall-verify/SKILL.md` | How to independently verify a decision receipt. |
-| `index.test.ts` | Vitest suite pinning the gate's decision state machine, the HTTPS-only credential guard, and the proxy CONNECT-header cap. |
+| `index.test.ts` | Vitest suite pinning the gate's decision state machine, the HTTPS-only credential guard, input minimization, fail-closed defaults, and the proxy CONNECT-header cap. Runnable in-repo: `npm install && npm test`. |
+| `package.json` | Dev harness for the test suite (vitest); not needed at runtime. |
+| `scripts/install.sh` | Copy the plugin into an OpenClaw plugin directory (`$OPENCLAW_PLUGIN_DIR` / `~/.openclaw/extensions`) and print the enable/key steps. |
+| `scripts/verify.sh` | Three-stage check: unit tests, egress reachability, and a live credential-injection probe that distinguishes "no key arrived" / "placeholder passed through unreplaced" / "real key injected". |
+| `scripts/teardown.sh` | Remove the installed plugin (manifest-id guarded) and list the config/provider/policy entries to clean up. |
 | `providers/blackwall.yaml` | OpenShell provider profile that injects the API key at the L7 proxy on egress, so the key never enters the sandbox (see *Recommended deployment*). |
 | `policy.yaml` | OpenShell sandbox network policy allowing egress only to the BLACK_WALL forecast endpoints. |
 
@@ -59,7 +63,8 @@ Disabled by default. Enable it for an agent and provide an API key:
 | `baseUrl` | `BLACKWALL_BASE_URL` | API base URL (default `https://blackwalltier.com`; **must be `https://`** for any non-loopback host) |
 | `mode` | `BLACKWALL_MODE` | `observe` (default) or `enforce` |
 | `cautionAction` | — | what a CAUTION verdict does in enforce mode: `approve` (default) → **block** with red-flag detail / `block` → **block** / `allow` → permit |
-| `failClosed` | `BLACKWALL_FAIL_CLOSED` | if the gate is unreachable, block instead of allowing an unscored action. Recommended `true` for sandboxed/security-positioned deployments. |
+| `failClosed` | `BLACKWALL_FAIL_CLOSED` | if the gate is unreachable, block instead of allowing an unscored action. **Default `true`** (fail closed) — set `false` to prefer availability over enforcement. |
+| `inputMode` | `BLACKWALL_INPUT_MODE` | what a forecast carries about tool parameters. **Default `metadata`**: key names, value types, and byte sizes only — parameter *values* never leave the sandbox. `contents`: size-capped/truncated values, opt-in, for content-based red-flag detection. |
 | `forecastTimeoutMs` | `BLACKWALL_TIMEOUT_MS` | per-call forecast timeout (ms) |
 
 > **Sandboxed runtimes (e.g. NemoClaw):** the agent process may run with a scrubbed
@@ -91,25 +96,69 @@ key exists only host-side. This mirrors the provider + policy pattern used by th
 example. Merge `policy.yaml`'s `network_policies` entry into your sandbox policy and
 import `providers/blackwall.yaml` alongside your other OpenShell providers.
 
+## What leaves the sandbox (data sharing)
+
+Every gated tool call sends one HTTPS request to the BLACK_WALL service. What it
+carries depends on `inputMode`:
+
+- **`metadata` (the default):** the tool *name*, plus a summary of its parameters
+  — key names (clipped to 64 chars, max 50 keys), each value's JSON type and byte
+  size, and the total payload size. Parameter **values are never transmitted**:
+  no commands, no file contents, no URLs, no tokens.
+- **`contents` (opt-in):** the actual parameters, size-capped at
+  `maxInputBytes` (default 8 KiB) with long strings truncated. Choose this only
+  where content-based red-flag detection is worth sharing tool payloads with the
+  service, and treat the cap as a size guard, not redaction.
+
+In both modes the `after_tool_call` outcome report carries only an outcome class
+and divergence severity, not tool output. Support and data-handling questions:
+<bluetier.operations@gmail.com>.
+
 ## Security properties
 
 - **No credential over plaintext.** The API key is only sent over `https://` (or an
   explicit loopback `http://` for local testing); a misconfigured `http://` base URL
   is rejected *before* any request or `Authorization` header is emitted.
-- **Fail-closed option.** With `failClosed: true`, an unreachable gate blocks the
-  action rather than letting it run unscored.
+- **Fail-closed by default.** In enforce mode, an unreachable gate blocks the
+  action rather than letting it run unscored; opting *out* (`failClosed: false`)
+  is the explicit choice. Observe mode is a trial/rollout mode and never blocks —
+  it is not an enforcement boundary, and the recommended sandboxed profile is
+  `mode: enforce` with the defaults left on.
+- **Metadata-only forecasts by default.** See *What leaves the sandbox* above;
+  sharing tool-call contents with the service is opt-in per deployment.
 - **Verifiable receipts.** Each receipt is signed over canonical hashes of the
   request and response; anyone can re-hash the bodies and verify the Ed25519
   signature against the published key at `/.well-known/blackwall-signing-keys.json`
   — no trust in any server required.
+
+## Install, verify, teardown
+
+```bash
+scripts/install.sh                  # copy plugin into $OPENCLAW_PLUGIN_DIR
+                                    #   (default ~/.openclaw/extensions/blackwall-guard)
+scripts/verify.sh                   # unit tests + egress check + injection probe
+scripts/teardown.sh                 # remove it again (manifest-id guarded)
+```
+
+Run `verify.sh` twice: once from the repo checkout (unit tests + reachability),
+and once **inside the sandbox** after wiring `providers/blackwall.yaml` — there,
+its third stage proves whether the L7 proxy really injected the credential at
+egress: HTTP 2xx means the real key was substituted; a `401 invalid_api_key`
+means the placeholder passed through unreplaced; a `401 missing_api_key` means
+no Authorization header arrived at all.
 
 ## Validation
 
 `index.test.ts` is a [Vitest](https://vitest.dev) suite covering the full
 `before_tool_call` decision state machine (observe/enforce × GO/CAUTION/STOP ×
 caution-action × forecast-error/fail-closed), the HTTPS-only credential guard
-(including loopback and bypass cases), and the proxy CONNECT-header size cap. Run it
-with `vitest run` in an environment that provides the OpenClaw plugin SDK.
+(including loopback and bypass cases), input minimization (metadata mode never
+transmits parameter values), and the proxy CONNECT-header size cap. It stubs the
+OpenClaw plugin SDK, so it runs in-repo with no host runtime:
+
+```bash
+npm install && npm test    # 27 tests
+```
 
 ## License
 

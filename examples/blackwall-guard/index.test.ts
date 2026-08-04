@@ -19,6 +19,7 @@ import {
   proxyFetch,
   requireSecureBaseUrl,
   resolveConfig,
+  summarizeInputs,
 } from "./index.ts";
 
 const silent = { info() {}, warn() {}, error() {}, debug() {} };
@@ -196,5 +197,90 @@ describe("proxyFetch CONNECT-header cap (PRA-4)", () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+describe("input minimization (PRA-5: metadata-only forecasts by default)", () => {
+  // MUTATION NOTES: if summarizeInputs leaks a VALUE (not just key/type/size),
+  // the "never values" assertions below fail; if resolveConfig's default flips
+  // back to contents, the default-mode test fails.
+  it("defaults inputMode to metadata", () => {
+    expect(cfg({}).inputMode).toBe("metadata");
+  });
+
+  it("metadata mode sends key names/types/sizes but NEVER values", async () => {
+    const forecast = forecastReturning(verdict("GO"));
+    const c = cfg({ forecast });
+    await handleBeforeToolCall(
+      ev({ params: { cmd: "rm -rf /", token: "sk-SECRET-VALUE" } }),
+      c,
+      silent,
+    );
+    const sent = (forecast as any).mock.calls[0][0];
+    const serialized = JSON.stringify(sent.inputs);
+    expect(serialized).not.toContain("rm -rf");
+    expect(serialized).not.toContain("sk-SECRET-VALUE");
+    expect(sent.inputs._input_mode).toBe("metadata");
+    const names = sent.inputs._keys.map((k: any) => k.name);
+    expect(names).toContain("cmd");
+    expect(names).toContain("token");
+  });
+
+  it("contents mode preserves the previous truncated-payload behavior (opt-in)", async () => {
+    const forecast = forecastReturning(verdict("GO"));
+    const c = cfg({ inputMode: "contents", forecast });
+    await handleBeforeToolCall(ev(), c, silent);
+    expect(JSON.stringify((forecast as any).mock.calls[0][0].inputs)).toContain("rm -rf /");
+  });
+
+  it("an unrecognized inputMode falls back to metadata (fail-private, not fail-verbose)", () => {
+    expect(cfg({ inputMode: "everything" as any }).inputMode).toBe("metadata");
+  });
+
+  it("BLACKWALL_INPUT_MODE env selects the mode when config is silent", () => {
+    process.env.BLACKWALL_INPUT_MODE = "contents";
+    try {
+      expect(cfg({}).inputMode).toBe("contents");
+    } finally {
+      delete process.env.BLACKWALL_INPUT_MODE;
+    }
+  });
+
+  it("summarizeInputs stays bounded under adversarial shapes", () => {
+    // Huge key names are clipped, key COUNT is capped, and values never appear.
+    const hostile: Record<string, unknown> = {};
+    hostile["k".repeat(5000)] = "v".repeat(100000);
+    for (let i = 0; i < 200; i++) hostile[`key_${i}`] = i;
+    const summary = summarizeInputs(hostile);
+    const bytes = JSON.stringify(summary).length;
+    expect(bytes).toBeLessThan(8 * 1024);
+    expect(summary._keys.length).toBeLessThanOrEqual(50);
+    expect(JSON.stringify(summary)).not.toContain("vvvvv");
+    // Non-object payloads summarize instead of throwing or leaking.
+    expect(summarizeInputs("a".repeat(500))._input_mode).toBe("metadata");
+    expect(JSON.stringify(summarizeInputs("a".repeat(500)))).not.toContain("aaaaa");
+    expect(summarizeInputs(null)._input_mode).toBe("metadata");
+  });
+});
+
+describe("failClosed default (PRA-6: enforce mode blocks unscored actions unless opted out)", () => {
+  // MUTATION NOTES: if the default reverts to fail-open, the first test fails;
+  // if the env opt-out stops working, the second fails.
+  it("defaults failClosed to true", () => {
+    expect(cfg({}).failClosed).toBe(true);
+  });
+
+  it("BLACKWALL_FAIL_CLOSED=false opts out explicitly", () => {
+    process.env.BLACKWALL_FAIL_CLOSED = "false";
+    try {
+      expect(cfg({}).failClosed).toBe(false);
+    } finally {
+      delete process.env.BLACKWALL_FAIL_CLOSED;
+    }
+  });
+
+  it("enforce + default config -> forecast error blocks (fail closed)", async () => {
+    const c = cfg({ mode: "enforce", forecast: forecastThrowing() });
+    expect(await handleBeforeToolCall(ev(), c, silent)).toMatchObject({ block: true });
   });
 });

@@ -2,7 +2,7 @@
   "id": "nemoclaw-blackwall-guard",
   "name": "BLACK_WALL Preflight Guardrail",
   "description": "Pre-action risk check for OpenClaw tool calls. Hooks before_tool_call to call BLACK_WALL forecast(); in enforce mode, blocks STOP verdicts and (by default) blocks CAUTION verdicts with the named red flags, since this runtime has no interactive approval surface. Receipts are Ed25519-signed and verifiable offline.",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "enabledByDefault": false,
   "activation": {
     "onStartup": true,
@@ -33,7 +33,12 @@
       },
       "failClosed": {
         "type": "boolean",
-        "description": "enforce mode only: when the gate is unreachable, block the action instead of letting it run unscored. Defaults to false (fail open). Recommended true for security-positioned deployments (e.g. NemoClaw)."
+        "description": "enforce mode only: when the gate is unreachable, block the action instead of letting it run unscored. Defaults to true (fail closed); set false (or BLACKWALL_FAIL_CLOSED=false) to prefer availability over enforcement."
+      },
+      "inputMode": {
+        "type": "string",
+        "enum": ["metadata", "contents"],
+        "description": "What a forecast carries about the tool call's parameters. metadata (default): key names, value types, and byte sizes only — parameter values never leave the sandbox. contents: the size-capped/truncated parameter values, for deployments that opt in to content-based red-flag detection."
       },
       "forecastTimeoutMs": {
         "type": "number",

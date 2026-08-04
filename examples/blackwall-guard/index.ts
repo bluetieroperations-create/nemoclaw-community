@@ -30,6 +30,12 @@ import { join } from "node:path";
 
 type Mode = "observe" | "enforce";
 type CautionAction = "approve" | "block" | "allow";
+// What a forecast request carries about the tool call's parameters:
+//   metadata (default) — key names, value types, and byte sizes only; parameter
+//     VALUES never leave the sandbox.
+//   contents — the size-capped/truncated parameter values (see truncateInputs),
+//     for deployments that opt in to content-based red-flag detection.
+type InputMode = "metadata" | "contents";
 type Recommendation = "GO" | "CAUTION" | "STOP" | (string & {});
 
 interface RedFlag {
@@ -89,6 +95,7 @@ export interface BlackwallConfig {
   mode?: Mode;
   cautionAction?: CautionAction;
   failClosed?: boolean;
+  inputMode?: InputMode;
   shouldGate?: (toolName: string) => boolean;
   maxInputBytes?: number;
   forecastTimeoutMs?: number;
@@ -102,6 +109,7 @@ interface ResolvedConfig {
   baseUrl?: string;
   mode: Mode;
   failClosed: boolean;
+  inputMode: InputMode;
   cautionAction: CautionAction;
   shouldGate: (toolName: string) => boolean;
   maxInputBytes: number;
@@ -620,14 +628,25 @@ export function resolveConfig(config: BlackwallConfig = {}): ResolvedConfig {
     baseUrl: config.baseUrl ?? process.env.BLACKWALL_BASE_URL,
     mode: mode === "enforce" ? "enforce" : "observe",
     // failClosed (enforce only): block when the gate is unreachable instead of
-    // letting the action run unscored. Off by default; recommended ON for
-    // security-positioned deployments like NemoClaw.
+    // letting the action run unscored. ON by default — a gate that silently
+    // waves actions through when its backend is down is not a gate. Opt out
+    // explicitly (config false / BLACKWALL_FAIL_CLOSED=false) for availability-
+    // over-enforcement deployments.
     failClosed:
       typeof config.failClosed === "boolean"
         ? config.failClosed
-        : ["1", "true", "yes"].includes(
-            String(process.env.BLACKWALL_FAIL_CLOSED ?? "").toLowerCase(),
-          ),
+        : process.env.BLACKWALL_FAIL_CLOSED != null
+          ? ["1", "true", "yes"].includes(
+              String(process.env.BLACKWALL_FAIL_CLOSED).toLowerCase(),
+            )
+          : true,
+    // inputMode: what a forecast carries about tool parameters. metadata
+    // (default) sends key names/types/sizes only — parameter VALUES never leave
+    // the sandbox. Anything unrecognized resolves to metadata (fail-private).
+    inputMode:
+      (config.inputMode ?? process.env.BLACKWALL_INPUT_MODE ?? "").toLowerCase() === "contents"
+        ? "contents"
+        : "metadata",
     cautionAction: (["block", "approve", "allow"].includes(cautionAction)
       ? cautionAction
       : "approve") as CautionAction,
@@ -695,6 +714,53 @@ function truncateInputs(inputs: any, maxBytes: number): any {
     return { _truncated: true, _original_bytes: serialized.length, _keys };
   }
   return trimmed;
+}
+
+// Metadata-only view of a tool call's parameters: key names (clipped), value
+// types, and byte sizes — never the values themselves. This is the default
+// forecast payload, so no tool-call contents reach the third-party service
+// unless the operator opts into inputMode: "contents". Bounded by construction:
+// key COUNT is capped, key NAMES are clipped, and values are only ever measured.
+const METADATA_MAX_KEYS = 50;
+const METADATA_MAX_KEY_CHARS = 64;
+
+export function summarizeInputs(inputs: any): Record<string, unknown> {
+  const measure = (value: unknown): number | null => {
+    try {
+      const s = JSON.stringify(value);
+      return s === undefined ? null : s.length;
+    } catch {
+      return null;
+    }
+  };
+  const summary: Record<string, unknown> = {
+    _input_mode: "metadata",
+    _byteSize: measure(inputs),
+  };
+  if (inputs === null || typeof inputs !== "object") {
+    summary._type = inputs === null ? "null" : typeof inputs;
+    return summary;
+  }
+  if (Array.isArray(inputs)) {
+    summary._type = "array";
+    summary._length = inputs.length;
+    return summary;
+  }
+  const keys = Object.keys(inputs);
+  summary._type = "object";
+  summary._keyCount = keys.length;
+  summary._keys = keys.slice(0, METADATA_MAX_KEYS).map((k) => {
+    const v = (inputs as Record<string, unknown>)[k];
+    return {
+      name:
+        k.length > METADATA_MAX_KEY_CHARS
+          ? `${k.slice(0, METADATA_MAX_KEY_CHARS)}…<${k.length} chars>`
+          : k,
+      type: v === null ? "null" : Array.isArray(v) ? "array" : typeof v,
+      bytes: measure(v),
+    };
+  });
+  return summary;
 }
 
 function emit(onEvent: ResolvedConfig["onEvent"], event: Record<string, unknown>): void {
@@ -788,7 +854,10 @@ export async function handleBeforeToolCall(
   }
 
   const rawParams = event?.params ?? {};
-  const inputs = truncateInputs(rawParams, cfg.maxInputBytes);
+  const inputs =
+    cfg.inputMode === "contents"
+      ? truncateInputs(rawParams, cfg.maxInputBytes)
+      : summarizeInputs(rawParams);
   const context: Record<string, unknown> = {
     source: "openclaw",
     ...(event?.toolKind ? { tool_kind: event.toolKind } : {}),
