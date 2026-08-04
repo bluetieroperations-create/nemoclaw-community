@@ -27,11 +27,14 @@ flowchart LR
     subgraph host["Host Machine"]
         subgraph sandbox["OpenShell Sandbox"]
             agent["Hermes Agent"]
-            skill["blackwall-payment-gate\nskill + stdlib client"]
+            skill["blackwall-payment-gate\nskill + stdlib client\n(advisory)"]
+            hook["blackwall-x402-gate plugin\nbefore_tool_call hook\n(mandatory)"]
             agent -->|"402 challenge:\npayTo, amount, resource"| skill
+            agent -->|"every tool call"| hook
         end
         proxy["L7 Proxy\n(policy.yaml)"]
         skill -->|"POST /v1/forecast-payment"| proxy
+        hook -->|"POST /v1/forecast-payment"| proxy
     end
 
     proxy -->|"GO / HOLD / STOP\n+ reasons + receipt"| blackwall
@@ -41,6 +44,21 @@ flowchart LR
     style host fill:#f7f6ef,stroke:#8a8068,stroke-width:2px
     style sandbox fill:#e7f0ff,stroke:#2b5fab,stroke-width:3px
 ```
+
+The gate runs at **two layers**, and the difference matters under attack:
+
+- **The skill** ([agents/hermes/skills/blackwall-payment-gate](agents/hermes/skills/blackwall-payment-gate/SKILL.md))
+  instructs the agent to check before signing. It is guidance — a
+  prompt-injected or mistaken agent can skip it.
+- **The plugin** ([plugin/](plugin/)) is the backstop the agent cannot skip: an
+  OpenClaw `before_tool_call` hook that recognizes payment-shaped tool calls
+  (flat `payTo`/`amount` fields, an x402 402-challenge `accepts[]` entry, or a
+  signed `X-PAYMENT` header), forecasts them, and blocks anything that isn't a
+  GO — enforce-mode and fail-closed **by default**, because it fires only on
+  payments and a payment backstop that defaults to advisory is not a backstop.
+  A signed `X-PAYMENT` header is also passed through so Blackwall's payload-sim
+  can cross-check that the signature really pays who the claim says.
+  Non-payment tool calls pass through untouched, with zero forecast calls.
 
 The sandbox's network policy (`policy.yaml`) allows exactly four routes on one
 host — the verdict and outcome-report endpoints plus health and discovery —
@@ -123,17 +141,32 @@ python3 blackwall_client.py --counterparty 0x02c2fcafce36b4aadb39625866bc6b1699d
   skill layout). The skill instructs the agent to gate every x402 payment
   through the client before signing, escalate HOLDs with reasons, and report
   outcomes after settlement.
+- **Hook (the enforcement backstop):** register [plugin/](plugin/) as an
+  OpenClaw plugin (id `blackwall-x402-gate`, disabled by default — enable it
+  per agent). Configuration and env vars (`BLACKWALL_X402_URL`,
+  `BLACKWALL_X402_MODE`, `BLACKWALL_X402_FAIL_CLOSED`, `BLACKWALL_PAYER`) are
+  documented in `plugin/openclaw.plugin.json`; add your wallet tool's name to
+  `paymentTools` if it isn't already payment-shaped. Its tests run in-repo:
+  `cd plugin && npm install && npm test` (32 tests). The canonical source of
+  this plugin is `integrations/openclaw/` in the Blackwall repository; this
+  directory vendors it.
 - **Outcome loop:** after a GO payment settles, call
   `report_outcome(receipt_id, report_token, "settled")` — self-reported
   outcomes feed the reputation corpus that scored the payment.
 
 ## Limits to know
 
-- **Advisory, fail-open by design.** Blackwall never signs, holds keys, or
-  blocks settlement itself; a verdict only has force because the agent's
-  skill and the operator's policy give it force. Signals that depend on
-  seller-controlled inputs (e.g. the resource URL that drives the category
-  price baseline) are HOLD-only and evadable by a motivated seller.
+- **The service is advisory; enforcement lives with you.** Blackwall never
+  signs, holds keys, or blocks settlement itself — a verdict has exactly the
+  force your deployment gives it. The skill alone is advisory; the plugin hook
+  makes the verdict mandatory at the runtime layer (enforce + fail-closed by
+  default). Signals that depend on seller-controlled inputs (e.g. the resource
+  URL that drives the category price baseline) are HOLD-only and evadable by a
+  motivated seller.
+- **The hook only gates what it can recognize.** A payment tool whose name and
+  params match none of the recognized shapes passes through unguarded — add
+  your wallet tool's name to `paymentTools` so unscorable calls to it block
+  instead. The skill layer still covers what the recognizer can't.
 - **The free public instance is a shared demo tier** — ephemeral state, idle
   spin-down, no SLA. Self-host for real workloads (the service is a single
   stdlib-only Python container; see its
