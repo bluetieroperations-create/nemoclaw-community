@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenShell policy for the Blackwall x402 payment-gate example.
+#
+# The sandbox may reach exactly one external host -- the Blackwall verdict
+# service -- and only its four verdict/health endpoints. The agent can ASK
+# whether a payment should happen; it cannot reach a facilitator, an RPC
+# node, or any other host from this policy alone, so a verdict can never
+# silently become a settlement. Merge the `blackwall` network policy into a
+# fuller agent policy (see personal-community-sentiment-triage/policy.yaml)
+# when the agent also needs inference and messaging egress.
+version: 1
+filesystem_policy:
+  include_workdir: true
+  read_only:
+  - /usr
+  - /lib
+  - /etc
+  - /proc
+  - /dev/urandom
+  read_write:
+  - /sandbox
+  - /tmp
+  - /dev/null
+landlock:
+  compatibility: best_effort
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+network_policies:
+  blackwall:
+    name: blackwall
+    endpoints:
+    - host: blackwall-free.onrender.com
+      port: 443
+      protocol: rest
+      tls: terminate
+      enforcement: enforce
+      rules:
+      # Ask for a pre-signature verdict on a payment the agent is considering.
+      - allow:
+          method: POST
+          path: /v1/forecast-payment
+      # Report what a prior verdict's payment actually did (closes the
+      # reputation loop; authorized by the verdict's report_token).
+      - allow:
+          method: POST
+          path: /v1/report-outcome
+      - allow:
+          method: GET
+          path: /healthz
+      # x402 discovery document (lists the service's endpoints + pricing).
+      - allow:
+          method: GET
+          path: /.well-known/x402
+    binaries:
+    - path: /usr/bin/python3
+    - path: /usr/bin/python3.13
+    - path: /usr/local/bin/python3
+    - path: /usr/bin/curl
