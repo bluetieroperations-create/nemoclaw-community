@@ -1,0 +1,17 @@
+employee_id,store_id,first_name,last_name,email,role,country,is_active,hired_at,password_hash
+1,1,Raffaele,Tarantino,raffaele.tarantino@araz.es,store_manager,,True,2017-06-01,$2b$12$vurgas1hJdMHuUKjVS53..MTxRwh1qtfePsPhE1SntwG0OXhWA9W2
+2,4,Iñigo,Varas,inigo.varas@araz.es,store_manager,,True,2018-03-15,$2b$12$aq.jTnUqv3jolAYpFdVeL.IkEgc82RHj1lYZpk/8af7TxKvdniuWe
+3,2,Paula,Serna,paula.serna@araz.es,store_manager,,True,2018-09-01,$2b$12$YTHdG2No5muzGE2OZIAqmOPiKVwq2/DluigP6i.Bij7vrCjCZHBvm
+4,3,Claudia,Garmendia,claudia.garmendia@araz.es,store_manager,,True,2019-04-10,$2b$12$Lgahi4WN4S0w83G55PBJL.PRFq6FTgdwLUHR7uxHDAZnz4He/fTb2
+5,,Sergio,Donís,sergio.donis@araz.es,country_manager,Spain,True,2020-01-20,$2b$12$ba8AxFjZgoPXYY9slNAkFe0KpYXmVW1cJgMAWVPiG7hVb.UqrQlgW
+6,5,Sergio,Pérez,sergio.perez@araz.es,store_manager,,True,2021-06-05,$2b$12$Qoxm9PXsE0NkbUucvAVeze3L.7hPMfhPVPx3/pW5WZMESY8eW1DOG
+7,1,María,Castro,maria.castro@araz.es,data_analyst,,True,2019-02-01,$2b$12$861AxjgjX/Oc2iSHbYeZ8unIziClTB6WbQGpf3aIMCuhdXS3rXIzK
+8,1,Ismael,Delgado,ismael.delgado@araz.es,data_analyst,,True,2020-08-15,$2b$12$B9EA/LH0R7myJkbRaNhUQOHwIV6h2X/vFMDLLxpc5/8Wv/DOxk4Ni
+9,2,Alberto,García,alberto.garcia@araz.es,data_analyst,,True,2019-11-01,$2b$12$eWA3MCJ4LndPeW/8iM/ePO185Nq0aYOijHz/A4FMnJFAVn184QKu.
+10,3,Alexis,Gómez,alexis.gomez@araz.es,data_analyst,,True,2020-03-10,$2b$12$dKxnC7XhRY6CU/K/ENr2jOURZ0fVtjfG4vRVsO/ROgWQKDmzN5bdK
+11,4,Lucía,Navarro,lucia.navarro@araz.es,data_analyst,,True,2021-09-15,$2b$12$NoDz/QlwD3pbKZo7u4D5fOz7AcEjeuDbKzF5uGHiP8EywkTgGeq9u
+12,5,Patricia,Gil,patricia.gil@araz.es,data_analyst,,True,2022-03-01,$2b$12$C71Dc7Ii/obtm7b55e7UBuheSEzdrClNnQ5Y9Fny776br9bv310hC
+13,2,Iker,Iglesias,iker.iglesias@araz.es,data_analyst,,True,2022-07-10,$2b$12$A.n4NqDFimq0DWP8wFAJ.e5NBE6uByUIA69vukI7CwcSGoubHoxMe
+14,3,Joaquín,Vargas,joaquin.vargas@araz.es,store_manager,,True,2023-01-15,$2b$12$3LovX0cj0S.03ECiWQ6ubequ4He75B7x.I/O9cqkYgABrmt0d9n2m
+15,4,Carmen,Castro,carmen.castro@araz.es,store_manager,,True,2022-11-01,$2b$12$D0q4vi0BkbFEL9tBoK7hmO68Vw1QIzB4e5WtjVDKmvtPgl8kqQ/Oq
+16,,Connie,Wang,connie.wang@araz.es,data_analyst,,True,2020-03-10,$2b$12$23nWMzpAjAH.PeAeJVZgQee5KuzEe.iVuW3I1no8veEMFmY0ZTfZi

@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+preset:
+  name: blender-mcp-host
+  description: "Allow Hermes to reach the host-side Blender and bounded workflow MCP proxies"
+
+network_policies:
+  blender_mcp_host:
+    name: blender_mcp_host
+    endpoints:
+      - host: "HOST_IP_PLACEHOLDER"
+        port: 9877
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: POST, path: "/**" }
+          - allow: { method: DELETE, path: "/**" }
+      - host: "HOST_IP_PLACEHOLDER"
+        port: 9878
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: POST, path: "/**" }
+          - allow: { method: DELETE, path: "/**" }
+    binaries:
+      - { path: /usr/local/bin/hermes }
+      - { path: /opt/hermes/.venv/bin/python* }
+      - { path: /usr/local/bin/python* }
+      - { path: /usr/bin/python* }
+      - { path: /usr/local/bin/node* }
+      - { path: /usr/bin/node* }
+      - { path: /usr/bin/curl }
+      - { path: /usr/local/bin/curl }

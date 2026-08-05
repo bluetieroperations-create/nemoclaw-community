@@ -1,0 +1,14 @@
+promotion_id,name,description,discount_type,discount_value,buy_x_quantity,get_y_quantity,min_purchase_amount,applicable_to,applicable_value,store_id,start_date,end_date,is_active,created_by
+1,Summer Sale SS2025,20% off all Spring/Summer 2025 items. Chain-wide.,percentage,20.0,,,,season,SS2025,,2025-07-01,2025-07-31,False,1
+2,AW2025 Coat Clearance,15% off Outerwear to clear AW2025 stock. Did not perform as expected.,percentage,15.0,,,100.0,category,Outerwear,,2026-01-15,2026-02-28,False,1
+3,Eco Reward — Organic Tee 10% Off,10% off Organic Tee for eco-conscious customers (sustainability score ≥ 7). Personalized offer.,percentage,10.0,,,,product,7,,2025-04-01,2025-12-31,False,1
+4,SS2026 Tee 2×3,"Buy 2 T-Shirts, get the 3rd free. Spring/Summer 2026 launch.",buy_x_get_y,,2,1,,category,T-Shirts,,2026-03-01,2026-05-31,True,1
+5,Madrid Footwear Spring,10% off all Footwear in Madrid store for SS2026.,percentage,10.0,,,,category,Footwear,1,2026-04-01,2026-04-30,True,2
+6,SS2026 Spring Push,15% off all Spring/Summer 2026 items. Chain-wide.,percentage,15.0,,,,season,SS2026,,2026-05-01,2026-06-30,True,1
+7,ClimaTex Brand Week,10% off all ClimaTex products. Limited time.,percentage,10.0,,,,brand,ClimaTex,,2026-05-10,2026-05-25,True,1
+8,Footwear Bundle May,Bundle 2 pairs of footwear and save 20%.,bundle,20.0,,,80.0,category,Footwear,,2026-05-05,2026-05-31,True,1
+9,€10 Off Basket,€10 off any purchase over €50.,fixed_amount,10.0,,,50.0,all,,,2026-05-01,2026-05-31,True,1
+10,Sevilla Store Boost,5% off everything at NemoClaw Sevilla.,percentage,5.0,,,,all,,4,2026-05-12,2026-06-12,True,1
+11,Easter 2×1 Accessories,"Buy 1 Accessory, get 1 free. Easter weekend special across Barcelona, Valencia and Sevilla.",buy_x_get_y,,1,1,,category,Accessories,,2026-04-02,2026-04-06,False,1
+12,Pre-Summer Footwear Flash,25% off all Footwear at Madrid and Barcelona. Get ready for summer!,percentage,25.0,,,,category,Footwear,1,2026-05-15,2026-06-15,True,2
+13,Pre-Summer Footwear Flash,25% off all Footwear at Madrid and Barcelona. Get ready for summer!,percentage,25.0,,,,category,Footwear,2,2026-05-15,2026-06-15,True,3

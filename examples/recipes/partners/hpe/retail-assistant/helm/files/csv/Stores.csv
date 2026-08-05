@@ -1,0 +1,6 @@
+store_id,name,city,country,region,address,phone,is_active,opened_at
+1,NemoClaw Madrid,Madrid,Spain,Center,"Calle Gran Vía 10, Madrid",+34 910 000 001,True,2018-03-15
+2,NemoClaw Barcelona,Barcelona,Spain,Mediterranean,"Passeig de Gràcia 55, Barcelona",+34 932 000 002,True,2018-09-01
+3,NemoClaw Valencia,Valencia,Spain,Mediterranean,"Calle Colón 22, Valencia",+34 960 000 003,True,2019-04-10
+4,NemoClaw Sevilla,Sevilla,Spain,South,"Calle Sierpes 14, Sevilla",+34 954 000 004,True,2020-01-20
+5,NemoClaw Bilbao,Bilbao,Spain,North,Gran Vía Don Diego López de Haro 5,+34 944 000 005,True,2021-06-05

@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+workspace:
+    openaiBaseUrl: "http://ip:port/v1"
+    socatInferencePort: 8000
+    token: "none"
+    model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8"
+    agent_name: "retail-demo-assistant"
+    image: "node:22"
+
+dind:
+    # DNS servers for the DinD daemon (must return IPv4 A records)
+    dns1: "8.8.8.8"
+    dns2: "8.8.4.4"
+    # DinD image
+    image: "docker:24-dind"
+
+telegram:
+    enabled: true
+    botToken: ""
+    allowedUserIds: "<user_id1>,<user_id2>"  # comma-separated list of Telegram user IDs allowed to interact with the bot
+
+openclaw:
+    streamingMode: "partial"   # partial (token-by-token) or full (wait for complete response)
+    toolProgress: "false"      # show tool-call progress indicators in Telegram: true / false
+    maxTokens: "8192"          # max output tokens per model response, 4192 by default from Nemoclaw
+
+
+telegramAuth:
+  - telegramId: ""
+    email: ""
+  - telegramId: ""
+    email: ""
+
+ingress:
+    enabled: false
+    host: ""
+    annotations: {}
+
+postgres:
+    enabled: true
+    image: "postgres:17.3"
+    user: "admin"
+    password: "admin"
+    database: "retail"
+    storageSize: "10Gi"
+    storageClass: ""
+    seedEnabled: true        
+
+retailApi:
+    enabled: true
+    image: "paulaserna/retail-api:k8s-fast"
+    port: 8000
+    jwtSecret: "change-me-in-production"

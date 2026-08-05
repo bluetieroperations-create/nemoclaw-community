@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+services:
+  # ─── 1. PostgreSQL ──────────────────────────────────────────
+  retail_database:
+    image: postgres:17.3
+    restart: always
+    environment:
+      POSTGRES_USER: ${PSQL_USER}
+      POSTGRES_PASSWORD: ${PSQL_PASSWORD}
+      POSTGRES_DB: ${PSQL_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./retail_database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${DB_EXT_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PSQL_USER} -d ${PSQL_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── 2. Database seeder (one-shot) ─────────────────────────
+  db_seed:
+    image: postgres:17.3
+    restart: "no"
+    depends_on:
+      retail_database:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${PSQL_PASSWORD}
+      PSQL_USER: ${PSQL_USER}
+      PSQL_DB: ${PSQL_DB}
+    volumes:
+      - ./synthetic_data/csv:/data/csv:ro
+      - ./scripts/init/seed.sh:/seed.sh:ro
+    entrypoint: ["bash", "/seed.sh"]
+
+  # ─── 3. Retail API (FastAPI + JWT + RBAC) ───────────────────
+  retail_api:
+    build: ./api
+    restart: always
+    depends_on:
+      retail_database:
+        condition: service_healthy
+    environment:
+      PSQL_HOST: retail_database
+      PSQL_PORT: 5432
+      PSQL_USER: ${PSQL_USER}
+      PSQL_PASSWORD: ${PSQL_PASSWORD}
+      PSQL_DB: ${PSQL_DB}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "${API_EXT_PORT:-8002}:8000"
+
+  # ─── 4. NemoClaw workspace ─────────────────────────────────
+  workspace:
+    image: ubuntu:24.04
+    network_mode: host
+    depends_on:
+      - retail_api
+    command: ["bash", "/scripts/init/startup.sh"]
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+      # OpenAI-compatible inference endpoint (full base URL incl. /v1).
+      # startup.sh parses this into host:port for the socat proxy and
+      # derives NEMOCLAW_ENDPOINT_URL from its path.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      # NemoClaw installer config
+      NEMOCLAW_NON_INTERACTIVE: "1"
+      NEMOCLAW_PROVIDER: "custom"
+      NEMOCLAW_MODEL: ${NEMOCLAW_MODEL}
+      COMPATIBLE_API_KEY: ${OPENAI_API_KEY:-none}
+      NEMOCLAW_SANDBOX_NAME: ${NEMOCLAW_SANDBOX_NAME}
+      NEMOCLAW_POLICY_MODE: "skip"
+      NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+      CHAT_UI_URL: ${CHAT_UI_URL:-}
+      # Telegram
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_USER_ID: ${TELEGRAM_USER_ID}
+      # Port config for multi-stack coexistence
+      SOCAT_INFERENCE_PORT: ${SOCAT_INFERENCE_PORT:-8000}
+      SOCAT_API_PORT: ${SOCAT_API_PORT:-8001}
+      API_EXT_PORT: ${API_EXT_PORT:-8002}
+      # Gateway isolation (separate gateway per stack)
+      NEMOCLAW_GATEWAY_PORT: ${NEMOCLAW_GATEWAY_PORT:-8080}
+      NEMOCLAW_DASHBOARD_PORT: ${NEMOCLAW_DASHBOARD_PORT:-18789}
+      OPENSHELL_DOCKER_NETWORK_NAME: ${OPENSHELL_DOCKER_NETWORK_NAME:-openshell-docker}
+      # Host path of the shared bin volume (below). Needed because Fix #9
+      # starts the gateway via the HOST docker daemon, which resolves
+      # bind-mount sources on the host filesystem, not the container's.
+      NEMOCLAW_BIN_PATH: ${NEMOCLAW_BIN_PATH:-/tmp/nemoclaw-bin}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the shared bin volume at the SAME path on host and container.
+      # Fix #9 starts the gateway via the HOST docker daemon (bind-mount
+      # sources resolve on the host), while the nemoclaw CLI spawns the same
+      # binaries locally inside this container. Using one identical path for
+      # both ensures every consumer agrees, even for a custom NEMOCLAW_BIN_PATH.
+      - ${NEMOCLAW_BIN_PATH:-/tmp/nemoclaw-bin}:${NEMOCLAW_BIN_PATH:-/tmp/nemoclaw-bin}
+      - ./scripts:/scripts:ro
+
+volumes:
+  postgres_data:

@@ -1,0 +1,492 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .Release.Name }}-startup"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+data:
+  # ─── Main startup script (K8s-adapted from docker-compose) ───────────────
+  startup.sh: |
+    #!/usr/bin/env bash
+    # NOTE: no "set -e" — the NemoClaw installer emits transient errors
+    # (connection refused) during the gateway boot race. Errors handled explicitly.
+
+    # ═══════════════════════════════════════════════════════════════
+    # NemoClaw Kubernetes startup script
+    # Runs inside the workspace (node:22) sidecar container.
+    #
+    # Key K8s differences vs docker-compose:
+    #  - workspace and dind share the pod's network namespace (sidecars)
+    #  - Use K8s service DNS for retail-api socat (port 8001)
+    #  - Port 8080 (OpenShell gateway) needs NO socat in K8s:
+    #    when the NemoClaw installer starts the OpenShell container in DinD
+    #    with -p 8080:8080, Docker's userland proxy binds 0.0.0.0:8080 in
+    #    the shared pod network namespace → NemoClaw CLI reaches it at
+    #    localhost:8080 directly, no forwarding needed.
+    #  - __WORKSPACE_IP__ = pod IP (hostname -I), reachable from inside
+    #    the sandbox (K3s inside DinD) via the DinD bridge → pod routing.
+    # ═══════════════════════════════════════════════════════════════
+
+    # ─── Helper: resolve the workspace pod IP ──────────────────────
+    # The sandbox (inside K3s inside DinD) needs the pod's real IP,
+    # NOT 127.0.0.1 (which is the sandbox's own loopback from its perspective).
+    get_workspace_ip() {
+      hostname -I | awk '{print $1}'
+    }
+
+    # ─── Helper: parse OPENAI_BASE_URL into scheme/host/port/path ──
+    # Full OpenAI-compatible base URL (e.g. http://svc:8000/v1 or
+    # https://integrate.api.nvidia.com/v1) is split into the pieces the
+    # socat proxy and gateway provider need:
+    #   OPENAI_SCHEME, OPENAI_HOST, OPENAI_PORT, OPENAI_PATH
+    parse_openai_base_url() {
+      # Backward-compat: derive from legacy DYNAMO_HOST (host:port) if set.
+      if [ -z "${OPENAI_BASE_URL:-}" ] && [ -n "${DYNAMO_HOST:-}" ]; then
+        OPENAI_BASE_URL="http://${DYNAMO_HOST}/v1"
+        echo "[Config] OPENAI_BASE_URL not set; derived from legacy DYNAMO_HOST: $OPENAI_BASE_URL"
+      fi
+      if [ -z "${OPENAI_BASE_URL:-}" ]; then
+        echo "[Config] ERROR: OPENAI_BASE_URL is not set."
+        return 1
+      fi
+      local url="$OPENAI_BASE_URL"
+      OPENAI_SCHEME="http"
+      case "$url" in
+        https://*) OPENAI_SCHEME="https"; url="${url#https://}" ;;
+        http://*)  OPENAI_SCHEME="http";  url="${url#http://}" ;;
+      esac
+      local hostport="${url%%/*}"
+      if [ "$hostport" = "$url" ]; then
+        OPENAI_PATH=""
+      else
+        OPENAI_PATH="/${url#*/}"
+      fi
+      OPENAI_PATH="${OPENAI_PATH%/}"
+      OPENAI_HOST="${hostport%%:*}"
+      if [ "${hostport#*:}" = "$hostport" ]; then
+        [ "$OPENAI_SCHEME" = "https" ] && OPENAI_PORT=443 || OPENAI_PORT=80
+      else
+        OPENAI_PORT="${hostport##*:}"
+      fi
+      echo "[Config] OPENAI_BASE_URL=$OPENAI_BASE_URL -> host=$OPENAI_HOST port=$OPENAI_PORT path='${OPENAI_PATH}' scheme=$OPENAI_SCHEME"
+    }
+
+    # ─── Helper: socat target for the inference proxy ──────────────
+    # Plain TCP for http upstreams; originate TLS for https upstreams.
+    openai_socat_target() {
+      if [ "$OPENAI_SCHEME" = "https" ]; then
+        echo "OPENSSL:${OPENAI_HOST}:${OPENAI_PORT},verify=0"
+      else
+        echo "TCP:${OPENAI_HOST}:${OPENAI_PORT}"
+      fi
+    }
+
+    # ─── Helper: ensure nip.io DNS resolves via /etc/hosts ─────────
+    # nip.io DNS can be unreliable. If OPENAI_HOST uses nip.io,
+    # extract the embedded IP and add an /etc/hosts entry.
+    ensure_openai_dns() {
+      local host="$OPENAI_HOST"
+      if echo "$host" | grep -q "nip.io"; then
+        local ip
+        ip=$(echo "$host" | grep -oP '\d+\.\d+\.\d+\.\d+')
+        if [ -n "$ip" ]; then
+          echo "[DNS] Adding /etc/hosts: $ip $host"
+          echo "$ip $host" >> /etc/hosts
+        fi
+      fi
+    }
+
+    # [1/4] Install packages
+    echo "[1/4] Installing packages..."
+    apt-get update -qq
+    apt-get install -y -qq docker.io socat curl >/dev/null 2>&1
+
+    # ─── DNS fix: parse OPENAI_BASE_URL + ensure nip.io resolves ──
+    parse_openai_base_url
+    ensure_openai_dns
+    # The sandbox/installer talk to the local socat proxy; preserve the
+    # upstream path (e.g. /v1) from OPENAI_BASE_URL.
+    # INFER_PORT is the workspace port the inference socat listens on.
+    INFER_PORT="${SOCAT_INFERENCE_PORT:-8000}"
+    export NEMOCLAW_ENDPOINT_URL="http://host.openshell.internal:${INFER_PORT}${OPENAI_PATH}"
+
+    # [2/4] Start socat proxies
+    echo "[2/4] Starting socat proxies..."
+    # Inference port: OpenAI-compatible LLM endpoint (forwarded to OPENAI_BASE_URL)
+    socat TCP-LISTEN:${INFER_PORT},fork,reuseaddr "$(openai_socat_target)" &
+    SOCAT_8000_PID=$!
+    # Port 8001: Retail API → K8s service DNS (reachable from this container)
+    socat TCP-LISTEN:8001,fork,reuseaddr \
+      TCP:{{ .Release.Name }}-retail-api.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.retailApi.port }} &
+    # NOTE: Port 8080 (OpenShell gateway) does NOT need a socat in K8s.
+    # DinD and workspace share the pod's network namespace. When the NemoClaw
+    # installer starts the OpenShell container inside DinD with -p 8080:8080,
+    # Docker's userland proxy binds 0.0.0.0:8080 in the shared pod network
+    # namespace. The NemoClaw CLI therefore reaches the gateway at localhost:8080
+    # directly — no forwarding needed and adding a socat here would conflict.
+    echo "127.0.0.1 host.openshell.internal" >> /etc/hosts
+    sleep 1
+
+    # Verify the inference socat is still alive (may have died if DNS failed
+    # or the port is already in use).
+    sleep 2
+    if ! kill -0 "$SOCAT_8000_PID" 2>/dev/null; then
+      echo "[socat-${INFER_PORT}] WARNING: socat died, restarting..."
+      socat TCP-LISTEN:${INFER_PORT},fork,reuseaddr "$(openai_socat_target)" &
+      SOCAT_8000_PID=$!
+      sleep 1
+      if ! kill -0 "$SOCAT_8000_PID" 2>/dev/null; then
+        echo "[socat-${INFER_PORT}] ERROR: socat failed again. Inference will not work."
+        echo "[socat-${INFER_PORT}] Is port ${INFER_PORT} already in use? Set SOCAT_INFERENCE_PORT to a free port."
+      fi
+    fi
+
+    # [3/4] Wait for Docker daemon (DinD sidecar)
+    echo "[3/4] Waiting for Docker daemon..."
+    for i in $(seq 1 30); do
+      if docker info >/dev/null 2>&1; then break; fi
+      sleep 2
+    done
+    docker info >/dev/null 2>&1 || { echo "Docker not ready after 60s"; exit 1; }
+    echo "Docker ready"
+
+    # Clear stale Docker build cache so the NemoClaw sandbox image builds
+    # fresh (avoids version mismatch between cached OpenClaw layers and
+    # the installer's patches).
+    echo "[3/4] Pruning Docker build cache..."
+    docker builder prune -af 2>/dev/null || docker system prune -af 2>/dev/null || true
+
+    # Export Telegram build args before installer runs so they are available
+    # as Docker image build args (NEMOCLAW_MESSAGING_*_B64).
+    if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_USER_ID:-}" ]; then
+      echo "[Telegram] Exporting messaging channel env vars..."
+      export NEMOCLAW_MESSAGING_CHANNELS_B64
+      NEMOCLAW_MESSAGING_CHANNELS_B64=$(echo -n '["telegram"]' | base64 -w 0)
+      export NEMOCLAW_MESSAGING_ALLOWED_IDS_B64
+      # Build JSON array from comma-separated TELEGRAM_USER_ID (e.g. "123,456,789" → ["123","456","789"])
+      IDS_JSON=$(echo "$TELEGRAM_USER_ID" | tr ',' '\n' | sed 's/^/"/;s/$/"/' | paste -sd ',' | sed 's/^/[/;s/$/]/')
+      NEMOCLAW_MESSAGING_ALLOWED_IDS_B64=$(printf '{"telegram":%s}' "$IDS_JSON" | base64 -w 0)
+    fi
+
+    # [4/4] Run official NemoClaw installer
+    echo "[4/4] Running NemoClaw installer..."
+
+    # Check if a sandbox already exists (from a previous run). If yes, skip onboard.
+    if nemoclaw "${NEMOCLAW_SANDBOX_NAME:-retail-demo-assistant}" status >/dev/null 2>&1; then
+      echo "[4/4] Sandbox already exists, skipping installer."
+      INSTALL_OK=true
+    else
+      # ─── Phase 1: Install NemoClaw CLI + OpenShell binaries ──────────
+      # Run the installer once. It will install the CLI and binaries, but
+      # the gateway start will fail because all Docker bind mounts resolve
+      # from the DinD daemon's filesystem (not the workspace's). Paths like
+      # /usr/local/bin/ and /root/.local/state/ don't exist on DinD.
+      echo "[4/4] Phase 1: Installing NemoClaw CLI..."
+      curl -fsSL https://nvidia.com/nemoclaw.sh | bash -s -- --fresh 2>&1 || true
+
+      # ─── Phase 2: Pre-start gateway compat container ourselves ───────
+      # The gateway binary (glibc 2.39) must run inside an ubuntu:24.04
+      # Docker container. But Docker bind mounts resolve from the DinD
+      # daemon's FS, not the workspace's. Solution: copy binaries and
+      # config to /var/run/ (shared emptyDir volume), then start the
+      # compat container with all paths on the shared volume.
+      echo "[4/4] Phase 2: Starting gateway compat container..."
+      if [ -f /usr/local/bin/openshell-gateway ] && [ -f /usr/local/bin/openshell-sandbox ]; then
+        cp /usr/local/bin/openshell-gateway /var/run/openshell-gateway
+        cp /usr/local/bin/openshell-sandbox /var/run/openshell-sandbox
+        chmod +x /var/run/openshell-gateway /var/run/openshell-sandbox
+        export NEMOCLAW_OPENSHELL_GATEWAY_BIN=/var/run/openshell-gateway
+        export NEMOCLAW_OPENSHELL_SANDBOX_BIN=/var/run/openshell-sandbox
+
+        # Write gateway config TOML with shared-volume paths
+        mkdir -p /var/run/nemoclaw-state
+        cat > /var/run/nemoclaw-state/openshell-gateway.toml << 'GWTOML'
+    [openshell]
+    version = 1
+
+    [openshell.gateway]
+    compute_drivers = ["docker"]
+
+    [openshell.drivers.docker]
+    grpc_endpoint = "http://127.0.0.1:8080"
+    network_name = "openshell-docker"
+    supervisor_image = "ghcr.io/nvidia/openshell/supervisor:0.0.44"
+    supervisor_bin = "/var/run/openshell-sandbox"
+    GWTOML
+
+        # Kill any stale gateway container
+        docker rm -f nemoclaw-openshell-gateway 2>/dev/null || true
+
+        # Start the compat container with ALL paths on shared volumes
+        docker run -d --rm --name nemoclaw-openshell-gateway --network host \
+          --volume /var/run/openshell-gateway:/opt/nemoclaw/openshell-gateway:ro \
+          --volume /var/run/nemoclaw-state:/var/run/nemoclaw-state:rw \
+          --volume /var/run/openshell-sandbox:/var/run/openshell-sandbox:ro \
+          --volume /var/run/docker.sock:/var/run/docker.sock:rw \
+          -e OPENSHELL_GATEWAY_CONFIG=/var/run/nemoclaw-state/openshell-gateway.toml \
+          -e OPENSHELL_BIND_ADDRESS=0.0.0.0 \
+          -e OPENSHELL_DISABLE_TLS=true \
+          -e OPENSHELL_DISABLE_GATEWAY_AUTH=true \
+          -e OPENSHELL_DRIVERS=docker \
+          -e OPENSHELL_DOCKER_NETWORK_NAME=openshell-docker \
+          -e OPENSHELL_GRPC_ENDPOINT=http://127.0.0.1:8080 \
+          -e OPENSHELL_SERVER_PORT=8080 \
+          -e OPENSHELL_DOCKER_SUPERVISOR_IMAGE=ghcr.io/nvidia/openshell/supervisor:0.0.44 \
+          -e OPENSHELL_DOCKER_SUPERVISOR_BIN=/var/run/openshell-sandbox \
+          ubuntu:24.04 /opt/nemoclaw/openshell-gateway 2>&1
+
+        # Wait for gateway to become ready
+        for i in $(seq 1 15); do
+          if docker ps --filter name=nemoclaw-openshell-gateway --format '{{ "{{.Status}}" }}' 2>/dev/null | grep -q "Up"; then
+            echo "[4/4] Gateway compat container running"
+            break
+          fi
+          sleep 2
+        done
+      else
+        echo "[4/4] WARNING: openshell binaries not found after install"
+      fi
+
+      # ─── Phase 3: Run nemoclaw onboard (gateway already running) ─────
+      echo "[4/4] Phase 3: Running nemoclaw onboard..."
+      if nemoclaw onboard --fresh 2>&1; then
+        INSTALL_OK=true
+      else
+        echo "[4/4] NemoClaw onboard exited non-zero (exit $?)."
+        if nemoclaw "${NEMOCLAW_SANDBOX_NAME:-retail-demo-assistant}" status >/dev/null 2>&1; then
+          echo "[4/4] Sandbox exists despite onboard error — continuing."
+          INSTALL_OK=true
+        else
+          echo "[4/4] NemoClaw onboard failed. Skipping post-install steps."
+          INSTALL_OK=false
+        fi
+      fi
+    fi
+
+    # ─── Post-install: Telegram + Skill + SOUL/USER + connectivity fixes ──
+    if [ "$INSTALL_OK" = "true" ] && [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_USER_ID:-}" ]; then
+      SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-retail-demo-assistant}"
+
+      # ─── Resolve workspace pod IP ──────────────────────────────
+      WORKSPACE_IP=$(get_workspace_ip)
+      echo "[IPs] Workspace pod IP: $WORKSPACE_IP"
+
+      # ─── Copy SKILL.md, SOUL.md, AGENTS.md for deployment ──────────
+      # /scripts is read-only (configmap mount), copy to /tmp for deployment.
+      # retail-api.js reads the API URL from .env at runtime — no IP patching needed.
+      echo "[Deploy] Copying SKILL.md, SOUL.md, AGENTS.md to /tmp..."
+      cp /scripts/SKILL.md /tmp/SKILL.md
+      cp /scripts/SOUL.md /tmp/SOUL.md
+      if [ -f /scripts/AGENTS.md ]; then
+        cp /scripts/AGENTS.md /tmp/AGENTS.md
+        echo "[Deploy] Custom AGENTS.md found, will override default."
+      fi
+
+      # Check if Telegram was already included during onboard (token was set).
+      # If so, skip the expensive channels add + rebuild cycle.
+      _HAS_TELEGRAM=$(nemoclaw "$SANDBOX_NAME" channels list 2>&1 | grep -c telegram || true)
+      if [ "${_HAS_TELEGRAM:-0}" -gt "0" ]; then
+        echo "[Telegram] Already configured during onboard, skipping rebuild."
+      else
+        # Register Telegram bridge provider with the OpenShell gateway.
+        echo "[Telegram] Registering telegram bridge with OpenShell gateway..."
+        nemoclaw "$SANDBOX_NAME" channels add telegram \
+          && echo "[Telegram] Bridge registered"
+
+        # Rebuild the sandbox image to link the Telegram provider.
+        echo "[Telegram] Rebuilding sandbox to apply Telegram channel..."
+        echo y | nemoclaw "$SANDBOX_NAME" rebuild \
+          && echo "[Telegram] Sandbox rebuilt"
+      fi
+
+      # Patch sandboxes.json: add messagingChannels and providerCredentialHashes
+      echo "[Telegram] Patching sandboxes.json..."
+      node /scripts/patch-sandboxes.js
+
+      # Wait for sandbox Docker container to become ready
+      echo "[Telegram] Waiting for sandbox container to become ready..."
+      for i in $(seq 1 60); do
+        SANDBOX_CTR=$(docker ps --filter "name=openshell-${SANDBOX_NAME}" --format '{{ "{{.Names}}" }}' 2>/dev/null | head -1)
+        if [ -n "$SANDBOX_CTR" ]; then break; fi
+        sleep 5
+      done
+
+      if [ -z "$SANDBOX_CTR" ]; then
+        echo "[ERROR] Sandbox container not found after 5 minutes."
+      else
+        echo "[Post-deploy] Sandbox container: $SANDBOX_CTR. Applying fixes..."
+
+        # ─── Fix 1: Update gateway provider URL ─────────────────────
+        echo "[Post-deploy] Updating gateway provider URL..."
+        openshell provider update compatible-endpoint -g nemoclaw \
+          --config "OPENAI_BASE_URL=http://host.openshell.internal:${INFER_PORT}${OPENAI_PATH}" 2>&1 \
+          && echo "[Post-deploy] Provider URL -> http://host.openshell.internal:${INFER_PORT}${OPENAI_PATH}"
+
+        # ─── Fix 2: Add inference.local to sandbox /etc/hosts ────────
+        # In Docker-based sandbox, inference.local should point to the Docker
+        # bridge gateway (172.18.0.1) which routes to the pod's socat on 8000.
+        echo "[Post-deploy] Adding inference.local to sandbox hosts..."
+        docker exec "$SANDBOX_CTR" sh -c "echo '172.18.0.1 inference.local' >> /etc/hosts"
+        echo "[Post-deploy] inference.local -> 172.18.0.1 (Docker bridge)"
+
+        # ─── Fix 2b: Start TCP relay for retail API ──────────────────
+        # The sandbox gateway runs in a separate network namespace. Child
+        # processes (exec tool) can only reach 10.200.0.1 (proxy veth) and
+        # localhost. Direct connections to 172.18.0.x are blocked by the
+        # sandbox's cgroup-level network restrictions.
+        # Solution: run a TCP relay in the sandbox's DEFAULT namespace
+        # (via docker exec, which bypasses the gateway namespace) listening
+        # on 10.200.0.1:8001, forwarding to 172.18.0.1:8001 (workspace socat
+        # → K8s retail API service). The gateway namespace can reach
+        # 10.200.0.1 because it's in no_proxy.
+        echo "[Post-deploy] Starting retail API TCP relay on 10.200.0.1:8001..."
+        cat /scripts/tcp-relay.py | docker exec -i "$SANDBOX_CTR" tee /tmp/_tcp_relay.py > /dev/null
+        docker exec "$SANDBOX_CTR" python3 /tmp/_tcp_relay.py &
+        sleep 2
+        # Verify relay is listening
+        if docker exec "$SANDBOX_CTR" ss -tlnp 2>/dev/null | grep -q '10.200.0.1:8001'; then
+          echo "[Post-deploy] Retail API relay OK (10.200.0.1:8001 -> 172.18.0.1:8001)"
+        else
+          echo "[Post-deploy] WARNING: Retail API relay failed to start"
+        fi
+
+        # ─── Fix 3: Patch openclaw.json (telegram, tools, workspace) ─
+        # ConfigMap files at /scripts/ are symlinks. docker cp fails with
+        # symlinks, so we use cat | docker exec -i tee workaround.
+        echo "[Post-deploy] Patching openclaw.json..."
+        cat /scripts/patch-openclaw.py | docker exec -i "$SANDBOX_CTR" tee /tmp/_patch_openclaw.py > /dev/null
+
+        SOUL_B64=$(base64 -w0 /tmp/SOUL.md)
+        USER_B64=$(base64 -w0 /scripts/USER.md)
+        AGENTS_B64=""
+        if [ -f /tmp/AGENTS.md ]; then
+          AGENTS_B64=$(base64 -w0 /tmp/AGENTS.md)
+        fi
+        docker exec \
+          -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
+          -e TELEGRAM_USER_ID="$TELEGRAM_USER_ID" \
+          -e CHAT_UI_URL="${CHAT_UI_URL:-}" \
+          -e OPENCLAW_STREAMING_MODE="${OPENCLAW_STREAMING_MODE:-partial}" \
+          -e OPENCLAW_TOOL_PROGRESS="${OPENCLAW_TOOL_PROGRESS:-false}" \
+          -e OPENCLAW_MAX_TOKENS="${OPENCLAW_MAX_TOKENS:-8192}" \
+          -e SOUL_B64="$SOUL_B64" \
+          -e USER_B64="$USER_B64" \
+          -e AGENTS_B64="$AGENTS_B64" \
+          "$SANDBOX_CTR" python3 /tmp/_patch_openclaw.py
+
+        # ─── Fix 3b: Force-install nemoclaw plugin (exec tool) ────────
+        echo "[Post-deploy] Force-installing nemoclaw plugin..."
+        docker exec "$SANDBOX_CTR" su -s /bin/sh sandbox -c \
+          'openclaw plugins install /opt/nemoclaw --dangerously-force-unsafe-install --force 2>&1' \
+          && echo "[Post-deploy] nemoclaw plugin installed (exec tool available)"
+
+        # ─── Fix 4: Install retail-api skill ─────────────────────────
+        echo "[Post-deploy] Installing retail-api skill..."
+        docker exec "$SANDBOX_CTR" mkdir -p /sandbox/.openclaw/skills/retail-api/scripts
+
+        # Transfer files using cat|tee (configmap symlink workaround)
+        cat /tmp/SKILL.md | docker exec -i "$SANDBOX_CTR" tee /sandbox/.openclaw/skills/retail-api/SKILL.md > /dev/null
+        cat /scripts/retail-api.js | docker exec -i "$SANDBOX_CTR" tee /sandbox/.openclaw/skills/retail-api/scripts/retail-api.js > /dev/null
+
+        # Write .env — port 8001 relay on 10.200.0.1 bridges the gateway
+        # network namespace to workspace socat → K8s retail API service.
+        docker exec "$SANDBOX_CTR" sh -c \
+          "echo 'RETAIL_API_URL=http://10.200.0.1:8001' > /sandbox/.openclaw/skills/retail-api/.env"
+
+        # Also install to /home/.openclaw/skills/ — newer agent versions read from here
+        docker exec "$SANDBOX_CTR" \
+          mkdir -p /home/.openclaw/skills/retail-api/scripts
+        cat /tmp/SKILL.md | docker exec -i "$SANDBOX_CTR" tee /home/.openclaw/skills/retail-api/SKILL.md > /dev/null
+        cat /scripts/retail-api.js | docker exec -i "$SANDBOX_CTR" tee /home/.openclaw/skills/retail-api/scripts/retail-api.js > /dev/null
+        docker exec "$SANDBOX_CTR" sh -c \
+          "echo 'RETAIL_API_URL=http://10.200.0.1:8001' > /home/.openclaw/skills/retail-api/.env"
+
+        # Fix ownership: files created as root, but openclaw runs as 'sandbox'
+        docker exec "$SANDBOX_CTR" sh -c \
+          "chown -R sandbox:sandbox /sandbox/.openclaw/skills/ /sandbox/.openclaw/workspace/ /home/.openclaw/skills/ 2>/dev/null; chmod -R a+r /sandbox/.openclaw/skills/ /home/.openclaw/skills/ 2>/dev/null"
+
+        # ─── Fix 5: Apply network policy with retail API access ──────
+        echo "[Post-deploy] Applying network policy..."
+        cp /scripts/policy.yaml /tmp/policy-resolved.yaml
+        openshell policy set -g nemoclaw --policy /tmp/policy-resolved.yaml "$SANDBOX_NAME" 2>&1 \
+          && echo "[Post-deploy] Policy applied"
+
+        # ─── Fix 6: Wait for hot-reload, re-patch, and restart gateway ─
+        echo "[Post-deploy] Waiting for openclaw hot-reload..."
+        sleep 10
+
+        docker exec \
+          -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
+          -e TELEGRAM_USER_ID="$TELEGRAM_USER_ID" \
+          -e CHAT_UI_URL="${CHAT_UI_URL:-}" \
+          -e OPENCLAW_STREAMING_MODE="${OPENCLAW_STREAMING_MODE:-partial}" \
+          -e OPENCLAW_TOOL_PROGRESS="${OPENCLAW_TOOL_PROGRESS:-false}" \
+          -e OPENCLAW_MAX_TOKENS="${OPENCLAW_MAX_TOKENS:-8192}" \
+          -e AGENTS_B64="$AGENTS_B64" \
+          "$SANDBOX_CTR" python3 /tmp/_patch_openclaw.py
+
+        # [Fix #7] kill -9 the openclaw process; PID 1 (openshell-sandbox) auto-restarts it.
+        # SIGUSR1 doesn't clean up Telegram poller threads, causing duplicate poller errors.
+        echo "[Post-deploy] Restarting openclaw (kill -9 for clean Telegram poller)..."
+        docker exec "$SANDBOX_CTR" \
+          sh -c 'OCPID=$(pgrep -f "openclaw" | head -1); if [ -n "$OCPID" ] && [ "$OCPID" != "1" ]; then kill -9 "$OCPID"; echo "Killed openclaw PID $OCPID"; else echo "openclaw PID not found or is PID 1, skipping"; fi'
+        sleep 5
+
+        # ─── Fix 7: Verify inference end-to-end ──────────────────────
+        echo "[Post-deploy] Verifying inference connectivity..."
+        for attempt in $(seq 1 6); do
+          MODELS=$(docker exec "$SANDBOX_CTR" \
+            curl -sk --max-time 10 --proxy http://10.200.0.1:3128 \
+            https://inference.local/v1/models 2>/dev/null || echo "")
+          if echo "$MODELS" | grep -q "object"; then
+            echo "[Post-deploy] Inference OK (attempt $attempt)"
+            break
+          fi
+          echo "[Post-deploy] Inference not ready (attempt $attempt/6), retrying..."
+          sleep 10
+        done
+        if ! echo "$MODELS" | grep -q "object"; then
+          echo "[Post-deploy] WARNING: Inference verification failed."
+          echo "[Post-deploy] Check: socat ${INFER_PORT} alive? vLLM service up? DNS resolving?"
+        fi
+
+        echo "[Post-deploy] All fixes applied."
+      fi
+
+      # Print dashboard token
+      DASHBOARD_TOKEN=$(docker exec "$SANDBOX_CTR" \
+        python3 -c "import json; c=json.load(open('/sandbox/.openclaw/openclaw.json')); print(c['gateway']['auth']['token'])" 2>/dev/null || echo "")
+      if [ -n "$DASHBOARD_TOKEN" ]; then
+        echo "[Dashboard] Token: ${DASHBOARD_TOKEN}"
+        if [ -n "${CHAT_UI_URL:-}" ]; then
+          echo "[Dashboard URL] ${CHAT_UI_URL%/}/#token=${DASHBOARD_TOKEN}"
+        fi
+      fi
+    fi
+
+    echo "Onboard complete. Container staying alive."
+    exec sleep infinity
+
+  # ─── Scripts and identity files (embedded from files/) ───────────────────
+  patch-openclaw.py: |
+{{ .Files.Get "files/init/patch-openclaw.py" | indent 4 }}
+  patch-sandboxes.js: |
+{{ .Files.Get "files/init/patch-sandboxes.js" | indent 4 }}
+  SOUL.md: |
+{{ .Files.Get "files/identity/SOUL.md" | indent 4 }}
+  USER.md: |
+{{ .Files.Get "files/identity/USER.md" | indent 4 }}
+  AGENTS.md: |
+{{ .Files.Get "files/identity/AGENTS.md" | indent 4 }}
+  SKILL.md: |
+{{ .Files.Get "files/skills/retail-api/SKILL.md" | indent 4 }}
+  retail-api.js: |
+{{ .Files.Get "files/skills/retail-api/scripts/retail-api.js" | indent 4 }}
+  tcp-relay.py: |
+{{ .Files.Get "files/init/tcp-relay.py" | indent 4 }}
+  policy.yaml: |
+{{ .Files.Get "files/policies/retail-api-policy.yaml" | indent 4 }}

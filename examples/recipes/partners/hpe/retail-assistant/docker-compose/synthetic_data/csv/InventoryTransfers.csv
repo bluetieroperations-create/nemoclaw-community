@@ -1,0 +1,38 @@
+transfer_id,from_store_id,to_store_id,product_id,size,color,quantity,requested_by,approved_by,status,notes,requested_at,completed_at
+1,1,2,5,M,White,15,3,,pending,Barcelona critically low on Basic Tee M White. Madrid has ample stock.,2026-04-12 10:00:00,
+2,1,5,15,M,Camel,10,6,1,completed,Bilbao sold out of Wool Coat M Camel. Madrid over-stocked.,2026-02-01 10:00:00,2026-02-08 10:00:00
+3,4,2,125,M,Black,6,15,1,completed,Cliente solicitó talla específica en otra tienda.,2026-03-16 02:19:14,2026-03-26 02:19:14
+4,2,3,65,L,Terracotta,17,1,1,in_transit,Rotación estacional entre tiendas.,2026-03-05 20:15:20,
+5,4,2,133,S,Black,29,4,1,completed,Demanda anticipada — fin de semana.,2026-03-30 02:37:56,2026-04-06 02:37:56
+6,2,3,34,XXL,Navy,8,6,,pending,Liberación de exceso desde tienda emisora.,2026-03-13 16:46:27,
+7,4,2,184,L,Brown,9,14,,cancelled,Demanda anticipada — fin de semana.,2026-02-23 07:54:42,
+8,1,3,155,One Size,Grey,25,14,1,completed,Liberación de exceso desde tienda emisora.,2026-03-23 02:42:46,2026-04-01 02:42:46
+9,2,5,24,37,Olive,9,14,,cancelled,Liberación de exceso desde tienda emisora.,2026-05-05 04:12:14,
+10,1,4,85,M,Camel,11,14,,pending,Reposición urgente para campaña activa.,2026-03-04 12:29:26,
+11,2,1,24,37,Olive,7,4,1,approved,Ajuste post-inventario.,2026-02-19 08:31:09,
+12,1,5,14,41,Mint,19,6,1,completed,Tienda receptora con stock crítico.,2026-03-03 10:54:27,2026-03-14 10:54:27
+13,5,1,107,XL,White,13,4,1,completed,Reasignación tras devolución masiva.,2026-01-14 18:43:36,2026-01-27 18:43:36
+14,3,1,7,43,Grey,25,1,1,completed,Liberación de exceso desde tienda emisora.,2026-01-29 17:04:43,2026-02-04 17:04:43
+15,3,4,22,43,Olive,17,14,,cancelled,Cobertura de promoción local.,2026-01-13 08:35:36,
+16,4,2,149,One Size,Tan,9,3,1,completed,Liberación de exceso desde tienda emisora.,2026-05-03 21:54:14,2026-05-13 21:54:14
+17,2,4,83,S,White,9,15,,pending,Liberación de exceso desde tienda emisora.,2026-03-10 01:50:31,
+18,2,3,89,30,Light Blue,9,4,1,completed,Tienda receptora con stock crítico.,2026-04-09 16:18:23,2026-04-17 16:18:23
+19,3,1,190,One Size,Grey,13,1,1,completed,Liberación de exceso desde tienda emisora.,2026-03-28 00:38:06,2026-04-04 00:38:06
+20,5,2,83,S,White,24,15,1,approved,Demanda anticipada — fin de semana.,2026-04-06 05:44:17,
+21,5,3,81,M,Ecru,11,1,1,completed,Demanda anticipada — fin de semana.,2026-04-25 13:05:53,2026-05-01 13:05:53
+22,1,4,36,S,Red,12,14,,pending,Reasignación tras devolución masiva.,2026-03-01 10:49:33,
+23,5,4,4,41,Navy Blue,17,6,,pending,Cliente solicitó talla específica en otra tienda.,2026-02-20 13:41:23,
+24,5,1,104,M,Black,21,6,1,in_transit,Reposición urgente para campaña activa.,2026-04-26 05:35:13,
+25,3,2,32,43,Brown,9,3,1,in_transit,Cliente solicitó talla específica en otra tienda.,2026-02-20 20:19:54,
+26,3,5,104,L,Black,9,3,1,completed,Liberación de exceso desde tienda emisora.,2026-01-21 00:25:34,2026-01-26 00:25:34
+27,5,2,105,M,Blue,5,2,1,approved,Demanda anticipada — fin de semana.,2026-01-17 13:31:32,
+28,5,1,12,40,White,11,4,1,completed,Ajuste post-inventario.,2026-02-19 12:33:04,2026-02-22 12:33:04
+29,5,2,97,XS,Light Blue,25,3,1,approved,Reasignación tras devolución masiva.,2026-01-18 16:27:29,
+30,1,3,80,28,Navy,5,3,1,in_transit,Cliente solicitó talla específica en otra tienda.,2026-02-01 23:06:28,
+31,3,4,53,XL,Stone,12,1,,cancelled,Transferencia rutinaria de equilibrio de stock.,2026-02-19 07:52:44,
+32,2,4,117,M,Camel,23,15,,pending,Rotación estacional entre tiendas.,2026-02-08 16:53:24,
+33,2,1,196,One Size,Black,10,1,,pending,Tienda receptora con stock crítico.,2026-04-20 10:27:38,
+34,4,2,154,One Size,Grey,25,15,,cancelled,Transferencia rutinaria de equilibrio de stock.,2026-03-31 19:02:22,
+35,5,3,110,XL,Red,27,3,,pending,Ajuste post-inventario.,2026-01-13 01:49:51,
+36,2,3,9,39,White,15,15,1,in_transit,Demanda anticipada — fin de semana.,2026-01-13 20:06:55,
+37,2,5,160,One Size,Navy,10,15,1,approved,Reposición urgente para campaña activa.,2026-04-22 11:31:42,

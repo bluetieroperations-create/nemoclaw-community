@@ -1,0 +1,43 @@
+reorder_id,store_id,product_id,size,color,requested_quantity,triggered_by,requested_by,status,supplier_reference,expected_delivery,requested_at,received_at
+1,4,20,One Size,Black,15,automatic,,pending,,2026-05-01,2026-04-10 10:00:00,
+2,3,1,42,Black,20,manual,4,approved,REF-VAL-2026-001,2026-04-28,2026-04-05 10:00:00,
+3,2,15,M,Camel,20,manual,1,received,PO-2026-0003,2026-03-16,2026-03-08 15:15:11,2026-03-18 15:15:11
+4,3,15,M,Charcoal,20,manual,1,ordered,PO-2026-0004,2026-05-10,2026-05-02 11:01:42,
+5,4,15,M,Camel,20,manual,4,received,PO-2026-0005,2026-05-02,2026-04-12 05:28:43,2026-04-29 05:28:43
+6,4,15,M,Charcoal,20,automatic,,pending,,2026-04-06,2026-03-19 09:51:22,
+7,4,15,L,Camel,20,automatic,,ordered,PO-2026-0007,2026-05-20,2026-04-30 07:35:00,
+8,4,15,L,Charcoal,20,manual,2,ordered,PO-2026-0008,2026-03-02,2026-02-17 07:11:35,
+9,5,15,M,Camel,20,manual,14,pending,,2026-05-26,2026-05-08 08:53:43,
+10,5,15,M,Charcoal,20,manual,4,pending,,2026-05-04,2026-04-19 12:28:15,
+11,5,15,L,Camel,20,manual,14,ordered,PO-2026-0011,2026-03-30,2026-03-18 12:35:53,
+12,2,5,M,White,20,manual,1,ordered,PO-2026-0012,2026-03-27,2026-03-14 05:07:44,
+13,2,5,M,Black,20,automatic,,pending,,2026-05-04,2026-04-16 13:00:16,
+14,2,5,L,White,20,automatic,,approved,,2026-03-14,2026-02-27 06:56:32,
+15,2,5,L,Black,20,automatic,,approved,,2026-05-12,2026-04-23 06:40:42,
+16,4,20,One Size,Black,15,manual,2,received,PO-2026-0016,2026-04-02,2026-03-18 14:50:43,2026-03-24 14:50:43
+17,4,20,One Size,Olive,15,automatic,,received,PO-2026-0017,2026-04-01,2026-03-23 15:17:57,2026-03-30 15:17:57
+18,3,1,42,Black,20,automatic,,approved,,2026-04-20,2026-04-02 09:29:20,
+19,3,1,42,White,20,automatic,,pending,,2026-04-24,2026-04-05 05:29:16,
+20,4,143,L,Black,20,automatic,,received,PO-2026-0020,2026-03-06,2026-02-24 10:49:07,2026-03-03 10:49:07
+21,3,44,S,Black,20,manual,15,received,PO-2026-0021,2026-04-15,2026-04-03 12:58:00,2026-04-20 12:58:00
+22,3,94,28,Black,20,automatic,,cancelled,,2026-05-13,2026-05-01 06:53:57,
+23,5,181,S,Brown,20,automatic,,approved,,2026-03-08,2026-02-26 06:11:06,
+24,4,198,One Size,Tortoise,20,manual,5,received,PO-2026-0024,2026-03-20,2026-03-03 09:21:24,2026-03-17 09:21:24
+25,4,23,43,Olive,20,manual,3,cancelled,,2026-04-08,2026-03-26 05:08:10,
+26,4,141,XXL,Grey,20,manual,4,pending,,2026-05-01,2026-04-18 13:56:52,
+27,5,86,XL,Camel,20,manual,5,approved,,2026-05-01,2026-04-19 12:37:30,
+28,4,132,XL,Black,20,automatic,,approved,,2026-04-22,2026-04-11 13:18:46,
+29,4,143,L,Black,20,manual,15,pending,,2026-03-09,2026-02-24 10:13:41,
+30,4,96,28,Light Blue,20,manual,4,cancelled,,2026-03-28,2026-03-14 13:11:27,
+31,2,137,XL,Navy,20,automatic,,ordered,PO-2026-0031,2026-03-24,2026-03-15 14:15:58,
+32,2,106,S,Red,20,manual,6,ordered,PO-2026-0032,2026-03-06,2026-02-19 14:02:24,
+33,2,17,40,White,20,manual,5,approved,,2026-05-10,2026-05-02 10:03:17,
+34,3,190,One Size,Camel,20,manual,15,ordered,PO-2026-0034,2026-04-24,2026-04-04 09:33:14,
+35,5,143,S,Grey,20,manual,1,ordered,PO-2026-0035,2026-04-25,2026-04-17 08:24:57,
+36,1,94,28,Dark Blue,20,automatic,,cancelled,,2026-04-01,2026-03-17 14:27:00,
+37,5,85,M,White,20,manual,4,pending,,2026-03-21,2026-03-07 07:04:13,
+38,3,89,34,Light Blue,20,manual,2,received,PO-2026-0038,2026-02-25,2026-02-17 06:52:13,2026-03-03 06:52:13
+39,5,16,41,White,20,manual,6,pending,,2026-04-19,2026-04-03 05:13:48,
+40,3,131,XL,Navy,20,manual,3,approved,,2026-03-17,2026-02-27 07:21:44,
+41,2,65,L,Terracotta,20,automatic,,pending,,2026-04-20,2026-04-12 14:02:52,
+42,5,183,S,Black,20,manual,6,ordered,PO-2026-0042,2026-04-20,2026-04-06 14:16:50,

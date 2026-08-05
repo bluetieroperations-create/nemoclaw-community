@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+preset:
+  name: ambientcg-fixtures
+  description: "Allow Hermes fixture preparation to download ambientCG CC0 assets"
+
+network_policies:
+  ambientcg_fixtures:
+    name: ambientcg_fixtures
+    endpoints:
+      - host: ambientcg.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: HEAD, path: "/**" }
+      - host: acg-download.struffelproductions.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: HEAD, path: "/**" }
+    binaries:
+      - { path: /usr/bin/python3* }
+      - { path: /opt/hermes/.venv/bin/python* }
+      - { path: /usr/bin/curl }
+      - { path: /usr/local/bin/curl }

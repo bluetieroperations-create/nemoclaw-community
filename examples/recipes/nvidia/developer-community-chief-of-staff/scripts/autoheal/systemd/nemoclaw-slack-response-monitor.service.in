@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=NemoClaw Slack response monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=@RUNTIME_ENV@
+WorkingDirectory=@EXAMPLE_DIR@
+ExecStart=/usr/bin/python3 @EXAMPLE_DIR@/scripts/autoheal/slack-response-monitor.py

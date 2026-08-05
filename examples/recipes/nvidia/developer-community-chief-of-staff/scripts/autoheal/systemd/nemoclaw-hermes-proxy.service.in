@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=NemoClaw host TLS proxy for inference
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=@RUNTIME_ENV@
+WorkingDirectory=@EXAMPLE_DIR@
+ExecStart=/usr/bin/python3 @EXAMPLE_DIR@/scripts/host-tls-proxy.py --upstream ${NEMOCLAW_HOST_TLS_PROXY_UPSTREAM} --listen 0.0.0.0 --port ${NEMOCLAW_HOST_TLS_PROXY_PORT}
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

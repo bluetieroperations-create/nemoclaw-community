@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, Tavily AI. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+watchlist: security-advisories
+topics:
+  - id: actively-exploited-vulnerabilities
+    query: "new actively exploited vulnerability added to known exploited vulnerabilities catalog"
+    seed_sources: [cisa.gov, nvd.nist.gov]
+    exclude_domains: [wikipedia.org]
+    lookback_days: 7
+    why_it_matters: "New actively exploited vulnerabilities can require urgent patching, mitigations, or exposure checks"
+
+  - id: cloud-native-security
+    query: "Kubernetes container runtime security advisory vulnerability"
+    seed_sources: [kubernetes.io, github.com, opencontainers.org]
+    exclude_domains: [stackoverflow.com, reddit.com]
+    lookback_days: 14
+    why_it_matters: "Cloud-native vulnerabilities can affect clusters, container images, CI systems, and production deployment platforms"
+
+  - id: open-source-supply-chain
+    query: "malicious package npm PyPI supply chain attack advisory"
+    seed_sources: [socket.dev, github.blog, blog.pypi.org, npmjs.com]
+    exclude_domains: [reddit.com, news.ycombinator.com]
+    lookback_days: 14
+    why_it_matters: "Malicious package campaigns can compromise developer workstations, CI pipelines, and downstream application releases"

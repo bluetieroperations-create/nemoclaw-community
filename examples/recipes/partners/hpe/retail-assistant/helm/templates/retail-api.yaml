@@ -1,0 +1,72 @@
+{{- if .Values.retailApi.enabled }}
+---
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Retail API — FastAPI application with JWT auth and PostgreSQL-level RBAC.
+# Build the image from nvidia-hackathon-team4/api/ and set retailApi.image in values.yaml:
+#   docker build -t <your-registry>/retail-api:latest nvidia-hackathon-team4/api/
+#   docker push <your-registry>/retail-api:latest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Release.Name }}-retail-api"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+    app: "{{ .Release.Name }}-retail-api"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "{{ .Release.Name }}-retail-api"
+  template:
+    metadata:
+      labels:
+        app: "{{ .Release.Name }}-retail-api"
+    spec:
+      containers:
+        - name: retail-api
+          image: "{{ .Values.retailApi.image }}"
+          ports:
+            - containerPort: {{ .Values.retailApi.port }}
+          env:
+            - name: PSQL_HOST
+              value: "{{ .Release.Name }}-postgres"
+            - name: PSQL_PORT
+              value: "5432"
+            - name: PSQL_USER
+              value: "{{ .Values.postgres.user }}"
+            - name: PSQL_PASSWORD
+              value: "{{ .Values.postgres.password }}"
+            - name: PSQL_DB
+              value: "{{ .Values.postgres.database }}"
+            - name: JWT_SECRET
+              value: "{{ .Values.retailApi.jwtSecret }}"
+          readinessProbe:
+            httpGet:
+              path: /docs
+              port: {{ .Values.retailApi.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ .Release.Name }}-retail-api"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.retailApi.port }}
+      targetPort: {{ .Values.retailApi.port }}
+      protocol: TCP
+  selector:
+    app: "{{ .Release.Name }}-retail-api"
+{{- end }}

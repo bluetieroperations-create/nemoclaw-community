@@ -1,0 +1,131 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# NemoClaw on Kubernetes — Deployment
+# Uses official installer with Docker-in-Docker for sandbox isolation.
+# Prerequisites: kubectl create namespace nemoclaw
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Release.Name }}-app"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+    app: "{{ .Release.Name }}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "{{ .Release.Name }}"
+  template:
+    metadata:
+      labels:
+        app: "{{ .Release.Name }}"
+    spec:
+      containers:
+        # Docker daemon (DinD)
+        - name: dind
+          image: "{{ .Values.dind.image }}"
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          command: ["dockerd", "--host=unix:///var/run/docker.sock"]
+          volumeMounts:
+            - name: docker-storage
+              mountPath: /var/lib/docker
+            - name: docker-socket
+              mountPath: /var/run
+            - name: docker-config
+              mountPath: /etc/docker
+          resources:
+            requests:
+              memory: "16Gi"
+              cpu: "4"
+
+        # Workspace - runs official NemoClaw installer
+        - name: workspace
+          image: "{{ .Values.workspace.image }}"
+          command: ["bash", "/scripts/startup.sh"]
+          ports:
+            - containerPort: 18789
+          env:
+            - name: DOCKER_HOST
+              value: unix:///var/run/docker.sock
+            # OpenAI-compatible inference endpoint (full base URL incl. /v1).
+            # startup.sh parses this into host:port for socat and derives
+            # NEMOCLAW_ENDPOINT_URL from its path. UPDATE THIS FOR YOUR CLUSTER.
+            - name: OPENAI_BASE_URL
+              value: "{{ .Values.workspace.openaiBaseUrl }}"
+            # Inference socat port (default 8000). Change if 8000 is busy.
+            - name: SOCAT_INFERENCE_PORT
+              value: "{{ .Values.workspace.socatInferencePort | default 8000 }}"
+            # NemoClaw config (uses host.openshell.internal via socat)
+            - name: NEMOCLAW_NON_INTERACTIVE
+              value: "1"
+            - name: NEMOCLAW_PROVIDER
+              value: "custom"
+            - name: NEMOCLAW_MODEL
+              value: "{{ .Values.workspace.model }}"
+            - name: COMPATIBLE_API_KEY
+              value: "{{ .Values.workspace.token }}"
+            - name: NEMOCLAW_SANDBOX_NAME
+              value: "{{ .Values.workspace.agent_name }}"
+            - name: NEMOCLAW_POLICY_MODE
+              value: "skip"
+            - name: NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE
+              value: "1"
+            - name: CHAT_UI_URL
+              value: "{{ .Values.ingress.host }}"
+            {{- if .Values.telegram.enabled }}
+            # Telegram integration — token from Secret, user ID from values
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Release.Name }}-telegram"
+                  key: TELEGRAM_BOT_TOKEN
+            - name: TELEGRAM_USER_ID
+              value: "{{ .Values.telegram.allowedUserIds }}"
+            {{- end }}
+            - name: OPENCLAW_STREAMING_MODE
+              value: "{{ .Values.openclaw.streamingMode | default "partial" }}"
+            - name: OPENCLAW_TOOL_PROGRESS
+              value: "{{ .Values.openclaw.toolProgress | default "false" }}"
+            - name: OPENCLAW_MAX_TOKENS
+              value: "{{ .Values.openclaw.maxTokens | default "8192" }}"
+          volumeMounts:
+            - name: docker-socket
+              mountPath: /var/run
+            - name: docker-config
+              mountPath: /etc/docker
+            - name: startup-script
+              mountPath: /scripts
+          resources:
+            requests:
+              memory: "32Gi"
+              cpu: "4"
+
+      # Configure Docker daemon for cgroup v2
+      initContainers:
+        - name: init-docker-config
+          image: busybox
+          command: ["sh", "-c", "echo '{\"default-cgroupns-mode\":\"host\",\"dns\":[\"{{ .Values.dind.dns1 }}\",\"{{ .Values.dind.dns2 }}\"],\"ipv6\":false}' > /etc/docker/daemon.json"]
+          volumeMounts:
+            - name: docker-config
+              mountPath: /etc/docker
+
+      volumes:
+        - name: docker-storage
+          emptyDir: {}
+        - name: docker-socket
+          emptyDir: {}
+        - name: docker-config
+          emptyDir: {}
+        - name: startup-script
+          configMap:
+            name: "{{ .Release.Name }}-startup"
+            defaultMode: 0755
+
+      restartPolicy: Always

@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "first_seen_run": "2026-06-15-a1b2",
+      "title": "PFAS restriction proposal consultation update",
+      "topic_id": "pfas-restriction-updates",
+      "url": "https://echa.europa.eu/hot-topics/perfluoroalkyl-chemicals-pfas"
+    },
+    {
+      "first_seen_run": "2026-06-15-a1b2",
+      "title": "OFAC Recent Actions archive",
+      "topic_id": "ofac-sanctions-designations",
+      "url": "https://ofac.treasury.gov/recent-actions"
+    },
+    {
+      "first_seen_run": "2026-06-22-c3d4",
+      "title": "Medical Device Recalls and Early Alerts",
+      "topic_id": "fda-device-recalls",
+      "url": "https://www.fda.gov/medical-devices/medical-device-safety/medical-device-recalls-and-early-alerts"
+    }
+  ]
+}

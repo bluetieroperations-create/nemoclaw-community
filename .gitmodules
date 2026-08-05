@@ -1,0 +1,3 @@
+[submodule "examples/tools/harness-engineering-playground/external/deepagents"]
+	path = examples/tools/harness-engineering-playground/external/deepagents
+	url = https://github.com/langchain-ai/deepagents.git

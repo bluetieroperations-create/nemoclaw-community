@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, Tavily AI. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Keep direct page fetching unavailable while leaving Tavily's web_search and
+# tavily_extract tools enabled for the Watchtower workflow.
+main:
+  tools:
+    deny:
+      - web_fetch

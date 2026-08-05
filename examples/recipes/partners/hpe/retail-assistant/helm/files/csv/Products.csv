@@ -1,0 +1,201 @@
+id,product_name,description,category,subcategory,brand,gender_target,sustainability_score,season,price,is_active
+1,Running Shoe ClimaTex,"ClimaTex Running — men, SS2026. Sustainability score 9.38/10.",Footwear,Running,ClimaTex,men,9.38,SS2026,68.5,True
+2,Running Shoe PureMove,"PureMove Running — men, SS2025. Sustainability score 6.4/10.",Footwear,Running,PureMove,men,6.4,SS2025,109.68,True
+3,Running Shoe NaturaPro,"NaturaPro Running — men, SS2025. Sustainability score 9.47/10.",Footwear,Running,NaturaPro,men,9.47,SS2025,66.52,True
+4,Running Shoe ClimaTex,"ClimaTex Running — men, SS2025. Sustainability score 7.91/10.",Footwear,Running,ClimaTex,men,7.91,SS2025,126.29,True
+5,Running Shoe ClimaTex,"ClimaTex Running — men, SS2026. Sustainability score 6.31/10.",Footwear,Running,ClimaTex,men,6.31,SS2026,125.29,True
+6,Running Shoe Terracycle,"Terracycle Running — men, AW2025. Sustainability score 7.17/10.",Footwear,Running,Terracycle,men,7.17,AW2025,89.08,True
+7,Running Shoe PureMove,"PureMove Running — men, SS2025. Sustainability score 5.65/10.",Footwear,Running,PureMove,men,5.65,SS2025,91.98,True
+8,Running Shoe GreenLine,"GreenLine Running — men, AW2025. Sustainability score 6.24/10.",Footwear,Running,GreenLine,men,6.24,AW2025,120.48,True
+9,Running Shoe NeoFit,"NeoFit Running — women, SS2025. Sustainability score 7.28/10.",Footwear,Running,NeoFit,women,7.28,SS2025,115.73,True
+10,Running Shoe Terracycle,"Terracycle Running — women, SS2026. Sustainability score 8.77/10.",Footwear,Running,Terracycle,women,8.77,SS2026,102.19,True
+11,Running Shoe ClimaTex,"ClimaTex Running — women, AW2025. Sustainability score 7.01/10.",Footwear,Running,ClimaTex,women,7.01,AW2025,111.24,True
+12,Running Shoe NeoFit,"NeoFit Running — women, AW2025. Sustainability score 8.43/10.",Footwear,Running,NeoFit,women,8.43,AW2025,76.61,True
+13,Running Shoe ClimaTex,"ClimaTex Running — women, SS2026. Sustainability score 8.91/10.",Footwear,Running,ClimaTex,women,8.91,SS2026,115.64,True
+14,Running Shoe PureMove,"PureMove Running — women, AW2025. Sustainability score 6.05/10.",Footwear,Running,PureMove,women,6.05,AW2025,92.17,True
+15,Running Shoe EcoWear,"EcoWear Running — women, AW2025. Sustainability score 7.13/10.",Footwear,Running,EcoWear,women,7.13,AW2025,75.68,True
+16,Running Shoe NaturaPro,"NaturaPro Running — women, SS2026. Sustainability score 8.57/10.",Footwear,Running,NaturaPro,women,8.57,SS2026,119.25,True
+17,Urban Sneaker GreenLine,"GreenLine Casual — unisex, SS2026. Sustainability score 3.65/10.",Footwear,Casual,GreenLine,unisex,3.65,SS2026,69.77,True
+18,Urban Sneaker UrbanStep,"UrbanStep Casual — unisex, AW2026. Sustainability score 5.26/10.",Footwear,Casual,UrbanStep,unisex,5.26,AW2026,88.71,True
+19,Urban Sneaker EcoWear,"EcoWear Casual — unisex, AW2025. Sustainability score 5.14/10.",Footwear,Casual,EcoWear,unisex,5.14,AW2025,81.12,True
+20,Urban Sneaker UrbanStep,"UrbanStep Casual — unisex, SS2026. Sustainability score 7.38/10.",Footwear,Casual,UrbanStep,unisex,7.38,SS2026,68.47,True
+21,Urban Sneaker NaturaPro,"NaturaPro Casual — unisex, AW2026. Sustainability score 6.91/10.",Footwear,Casual,NaturaPro,unisex,6.91,AW2026,77.49,True
+22,Urban Sneaker NeoFit,"NeoFit Casual — unisex, AW2026. Sustainability score 7.05/10.",Footwear,Casual,NeoFit,unisex,7.05,AW2026,76.34,True
+23,Urban Sneaker EcoWear,"EcoWear Casual — unisex, SS2026. Sustainability score 4.44/10.",Footwear,Casual,EcoWear,unisex,4.44,SS2026,75.87,True
+24,Urban Sneaker PureMove,"PureMove Casual — unisex, SS2025. Sustainability score 5.24/10.",Footwear,Casual,PureMove,unisex,5.24,SS2025,82.34,True
+25,Oxford Classic UrbanStep,"UrbanStep Formal — men, AW2025. Sustainability score 4.08/10.",Footwear,Formal,UrbanStep,men,4.08,AW2025,115.49,True
+26,Oxford Classic EcoWear,"EcoWear Formal — men, SS2026. Sustainability score 2.17/10.",Footwear,Formal,EcoWear,men,2.17,SS2026,105.95,True
+27,Oxford Classic NeoFit,"NeoFit Formal — men, SS2026. Sustainability score 2.73/10.",Footwear,Formal,NeoFit,men,2.73,SS2026,114.45,True
+28,Oxford Classic GreenLine,"GreenLine Formal — men, SS2026. Sustainability score 2.24/10.",Footwear,Formal,GreenLine,men,2.24,SS2026,93.6,True
+29,Oxford Classic PureMove,"PureMove Formal — men, AW2025. Sustainability score 3.75/10.",Footwear,Formal,PureMove,men,3.75,AW2025,119.81,True
+30,Oxford Classic ClimaTex,"ClimaTex Formal — men, AW2025. Sustainability score 3.38/10.",Footwear,Formal,ClimaTex,men,3.38,AW2025,131.03,True
+31,Oxford Classic ClimaTex,"ClimaTex Formal — men, AW2025. Sustainability score 4.03/10.",Footwear,Formal,ClimaTex,men,4.03,AW2025,152.1,True
+32,Oxford Classic UrbanStep,"UrbanStep Formal — men, SS2026. Sustainability score 3.04/10.",Footwear,Formal,UrbanStep,men,3.04,SS2026,115.34,True
+33,Basic Tee NaturaPro,"NaturaPro T-Shirts — men, SS2026. Sustainability score 7.83/10.",Apparel,T-Shirts,NaturaPro,men,7.83,SS2026,28.81,True
+34,Basic Tee PureMove,"PureMove T-Shirts — men, SS2025. Sustainability score 9.41/10.",Apparel,T-Shirts,PureMove,men,9.41,SS2025,34.99,True
+35,Basic Tee PureMove,"PureMove T-Shirts — men, SS2026. Sustainability score 7.44/10.",Apparel,T-Shirts,PureMove,men,7.44,SS2026,22.63,True
+36,Basic Tee Terracycle,"Terracycle T-Shirts — men, SS2026. Sustainability score 9.32/10.",Apparel,T-Shirts,Terracycle,men,9.32,SS2026,15.44,True
+37,Basic Tee Terracycle,"Terracycle T-Shirts — men, SS2025. Sustainability score 9.46/10.",Apparel,T-Shirts,Terracycle,men,9.46,SS2025,15.16,True
+38,Basic Tee ClimaTex,"ClimaTex T-Shirts — men, SS2025. Sustainability score 9.61/10.",Apparel,T-Shirts,ClimaTex,men,9.61,SS2025,31.66,True
+39,Basic Tee NeoFit,"NeoFit T-Shirts — men, SS2026. Sustainability score 6.76/10.",Apparel,T-Shirts,NeoFit,men,6.76,SS2026,19.38,True
+40,Basic Tee GreenLine,"GreenLine T-Shirts — men, SS2025. Sustainability score 9.61/10.",Apparel,T-Shirts,GreenLine,men,9.61,SS2025,27.56,True
+41,Essential Tee Terracycle,"Terracycle T-Shirts — women, SS2026. Sustainability score 6.62/10.",Apparel,T-Shirts,Terracycle,women,6.62,SS2026,28.41,True
+42,Essential Tee GreenLine,"GreenLine T-Shirts — women, SS2026. Sustainability score 7.53/10.",Apparel,T-Shirts,GreenLine,women,7.53,SS2026,16.53,True
+43,Essential Tee GreenLine,"GreenLine T-Shirts — women, SS2026. Sustainability score 9.25/10.",Apparel,T-Shirts,GreenLine,women,9.25,SS2026,18.41,True
+44,Essential Tee Terracycle,"Terracycle T-Shirts — women, SS2026. Sustainability score 7.4/10.",Apparel,T-Shirts,Terracycle,women,7.4,SS2026,29.12,True
+45,Essential Tee Terracycle,"Terracycle T-Shirts — women, SS2025. Sustainability score 7.69/10.",Apparel,T-Shirts,Terracycle,women,7.69,SS2025,27.69,True
+46,Essential Tee ClimaTex,"ClimaTex T-Shirts — women, SS2025. Sustainability score 6.99/10.",Apparel,T-Shirts,ClimaTex,women,6.99,SS2025,31.37,True
+47,Essential Tee NaturaPro,"NaturaPro T-Shirts — women, SS2026. Sustainability score 9.32/10.",Apparel,T-Shirts,NaturaPro,women,9.32,SS2026,31.44,True
+48,Essential Tee UrbanStep,"UrbanStep T-Shirts — women, SS2025. Sustainability score 6.55/10.",Apparel,T-Shirts,UrbanStep,women,6.55,SS2025,28.44,True
+49,Organic Tee ClimaTex,"ClimaTex T-Shirts — unisex, SS2026. Sustainability score 9.5/10.",Apparel,T-Shirts,ClimaTex,unisex,9.5,SS2026,25.37,True
+50,Organic Tee NaturaPro,"NaturaPro T-Shirts — unisex, SS2025. Sustainability score 9.88/10.",Apparel,T-Shirts,NaturaPro,unisex,9.88,SS2025,34.45,True
+51,Organic Tee PureMove,"PureMove T-Shirts — unisex, SS2026. Sustainability score 9.24/10.",Apparel,T-Shirts,PureMove,unisex,9.24,SS2026,27.43,True
+52,Organic Tee PureMove,"PureMove T-Shirts — unisex, SS2026. Sustainability score 9.27/10.",Apparel,T-Shirts,PureMove,unisex,9.27,SS2026,30.95,True
+53,Organic Tee Terracycle,"Terracycle T-Shirts — unisex, SS2025. Sustainability score 8.23/10.",Apparel,T-Shirts,Terracycle,unisex,8.23,SS2025,30.98,True
+54,Organic Tee EcoWear,"EcoWear T-Shirts — unisex, SS2025. Sustainability score 8.99/10.",Apparel,T-Shirts,EcoWear,unisex,8.99,SS2025,24.09,True
+55,Organic Tee PureMove,"PureMove T-Shirts — unisex, SS2026. Sustainability score 8.27/10.",Apparel,T-Shirts,PureMove,unisex,8.27,SS2026,35.75,True
+56,Organic Tee NeoFit,"NeoFit T-Shirts — unisex, SS2026. Sustainability score 9.49/10.",Apparel,T-Shirts,NeoFit,unisex,9.49,SS2026,31.41,True
+57,Oxford Shirt GreenLine,"GreenLine Shirts — men, AW2025. Sustainability score 5.96/10.",Apparel,Shirts,GreenLine,men,5.96,AW2025,70.42,True
+58,Oxford Shirt NaturaPro,"NaturaPro Shirts — men, SS2026. Sustainability score 4.84/10.",Apparel,Shirts,NaturaPro,men,4.84,SS2026,72.56,True
+59,Oxford Shirt NeoFit,"NeoFit Shirts — men, SS2025. Sustainability score 5.33/10.",Apparel,Shirts,NeoFit,men,5.33,SS2025,43.69,True
+60,Oxford Shirt NeoFit,"NeoFit Shirts — men, SS2026. Sustainability score 6.06/10.",Apparel,Shirts,NeoFit,men,6.06,SS2026,38.97,True
+61,Oxford Shirt NeoFit,"NeoFit Shirts — men, SS2025. Sustainability score 4.83/10.",Apparel,Shirts,NeoFit,men,4.83,SS2025,37.42,True
+62,Oxford Shirt ClimaTex,"ClimaTex Shirts — men, SS2026. Sustainability score 4.64/10.",Apparel,Shirts,ClimaTex,men,4.64,SS2026,38.67,True
+63,Oxford Shirt EcoWear,"EcoWear Shirts — men, SS2025. Sustainability score 5.0/10.",Apparel,Shirts,EcoWear,men,5.0,SS2025,37.02,True
+64,Oxford Shirt PureMove,"PureMove Shirts — men, SS2025. Sustainability score 6.3/10.",Apparel,Shirts,PureMove,men,6.3,SS2025,37.74,True
+65,Linen Blouse PureMove,"PureMove Shirts — women, SS2025. Sustainability score 6.2/10.",Apparel,Shirts,PureMove,women,6.2,SS2025,58.46,True
+66,Linen Blouse EcoWear,"EcoWear Shirts — women, SS2025. Sustainability score 8.45/10.",Apparel,Shirts,EcoWear,women,8.45,SS2025,39.7,True
+67,Linen Blouse Terracycle,"Terracycle Shirts — women, SS2025. Sustainability score 5.83/10.",Apparel,Shirts,Terracycle,women,5.83,SS2025,57.95,True
+68,Linen Blouse GreenLine,"GreenLine Shirts — women, SS2025. Sustainability score 7.87/10.",Apparel,Shirts,GreenLine,women,7.87,SS2025,30.52,True
+69,Linen Blouse NeoFit,"NeoFit Shirts — women, SS2025. Sustainability score 6.3/10.",Apparel,Shirts,NeoFit,women,6.3,SS2025,30.55,True
+70,Linen Blouse NaturaPro,"NaturaPro Shirts — women, SS2026. Sustainability score 7.74/10.",Apparel,Shirts,NaturaPro,women,7.74,SS2026,48.41,True
+71,Linen Blouse ClimaTex,"ClimaTex Shirts — women, SS2025. Sustainability score 7.04/10.",Apparel,Shirts,ClimaTex,women,7.04,SS2025,57.23,True
+72,Linen Blouse ClimaTex,"ClimaTex Shirts — women, SS2025. Sustainability score 8.34/10.",Apparel,Shirts,ClimaTex,women,8.34,SS2025,47.63,True
+73,Slim Chino Terracycle,"Terracycle Pants — men, SS2025. Sustainability score 7.37/10.",Apparel,Pants,Terracycle,men,7.37,SS2025,63.32,True
+74,Slim Chino ClimaTex,"ClimaTex Pants — men, SS2025. Sustainability score 5.49/10.",Apparel,Pants,ClimaTex,men,5.49,SS2025,78.89,True
+75,Slim Chino ClimaTex,"ClimaTex Pants — men, SS2025. Sustainability score 5.55/10.",Apparel,Pants,ClimaTex,men,5.55,SS2025,73.5,True
+76,Slim Chino NeoFit,"NeoFit Pants — men, AW2025. Sustainability score 4.23/10.",Apparel,Pants,NeoFit,men,4.23,AW2025,69.33,True
+77,Slim Chino NeoFit,"NeoFit Pants — men, AW2025. Sustainability score 6.09/10.",Apparel,Pants,NeoFit,men,6.09,AW2025,60.24,True
+78,Slim Chino ClimaTex,"ClimaTex Pants — men, SS2026. Sustainability score 5.51/10.",Apparel,Pants,ClimaTex,men,5.51,SS2026,65.22,True
+79,Slim Chino UrbanStep,"UrbanStep Pants — men, SS2026. Sustainability score 6.28/10.",Apparel,Pants,UrbanStep,men,6.28,SS2026,79.11,True
+80,Slim Chino PureMove,"PureMove Pants — men, AW2025. Sustainability score 7.11/10.",Apparel,Pants,PureMove,men,7.11,AW2025,62.2,True
+81,Wide-Leg Trouser NeoFit,"NeoFit Pants — women, SS2026. Sustainability score 6.2/10.",Apparel,Pants,NeoFit,women,6.2,SS2026,73.1,True
+82,Wide-Leg Trouser UrbanStep,"UrbanStep Pants — women, AW2025. Sustainability score 5.94/10.",Apparel,Pants,UrbanStep,women,5.94,AW2025,52.5,True
+83,Wide-Leg Trouser NeoFit,"NeoFit Pants — women, AW2025. Sustainability score 7.06/10.",Apparel,Pants,NeoFit,women,7.06,AW2025,78.14,True
+84,Wide-Leg Trouser UrbanStep,"UrbanStep Pants — women, AW2025. Sustainability score 5.26/10.",Apparel,Pants,UrbanStep,women,5.26,AW2025,43.65,True
+85,Wide-Leg Trouser UrbanStep,"UrbanStep Pants — women, SS2025. Sustainability score 6.12/10.",Apparel,Pants,UrbanStep,women,6.12,SS2025,69.78,True
+86,Wide-Leg Trouser EcoWear,"EcoWear Pants — women, AW2025. Sustainability score 6.68/10.",Apparel,Pants,EcoWear,women,6.68,AW2025,63.46,True
+87,Wide-Leg Trouser UrbanStep,"UrbanStep Pants — women, AW2025. Sustainability score 7.62/10.",Apparel,Pants,UrbanStep,women,7.62,AW2025,56.43,True
+88,Wide-Leg Trouser EcoWear,"EcoWear Pants — women, AW2025. Sustainability score 6.8/10.",Apparel,Pants,EcoWear,women,6.8,AW2025,78.74,True
+89,Slim Fit Jean UrbanStep,"UrbanStep Jeans — men, AW2026. Sustainability score 3.64/10.",Apparel,Jeans,UrbanStep,men,3.64,AW2026,78.12,True
+90,Slim Fit Jean ClimaTex,"ClimaTex Jeans — men, AW2026. Sustainability score 3.32/10.",Apparel,Jeans,ClimaTex,men,3.32,AW2026,63.97,True
+91,Slim Fit Jean NeoFit,"NeoFit Jeans — men, AW2025. Sustainability score 3.84/10.",Apparel,Jeans,NeoFit,men,3.84,AW2025,59.6,True
+92,Slim Fit Jean NaturaPro,"NaturaPro Jeans — men, AW2026. Sustainability score 5.92/10.",Apparel,Jeans,NaturaPro,men,5.92,AW2026,88.81,True
+93,Slim Fit Jean EcoWear,"EcoWear Jeans — men, AW2026. Sustainability score 4.97/10.",Apparel,Jeans,EcoWear,men,4.97,AW2026,79.36,True
+94,Slim Fit Jean Terracycle,"Terracycle Jeans — men, SS2026. Sustainability score 3.82/10.",Apparel,Jeans,Terracycle,men,3.82,SS2026,56.16,True
+95,Slim Fit Jean NeoFit,"NeoFit Jeans — men, AW2025. Sustainability score 3.54/10.",Apparel,Jeans,NeoFit,men,3.54,AW2025,69.04,True
+96,Slim Fit Jean NaturaPro,"NaturaPro Jeans — men, AW2025. Sustainability score 5.22/10.",Apparel,Jeans,NaturaPro,men,5.22,AW2025,57.78,True
+97,Straight Jean UrbanStep,"UrbanStep Jeans — women, SS2026. Sustainability score 3.75/10.",Apparel,Jeans,UrbanStep,women,3.75,SS2026,81.11,True
+98,Straight Jean ClimaTex,"ClimaTex Jeans — women, AW2026. Sustainability score 4.3/10.",Apparel,Jeans,ClimaTex,women,4.3,AW2026,66.93,True
+99,Straight Jean NeoFit,"NeoFit Jeans — women, AW2025. Sustainability score 4.99/10.",Apparel,Jeans,NeoFit,women,4.99,AW2025,82.19,True
+100,Straight Jean EcoWear,"EcoWear Jeans — women, AW2025. Sustainability score 5.64/10.",Apparel,Jeans,EcoWear,women,5.64,AW2025,60.45,True
+101,Straight Jean UrbanStep,"UrbanStep Jeans — women, SS2026. Sustainability score 5.32/10.",Apparel,Jeans,UrbanStep,women,5.32,SS2026,64.52,True
+102,Straight Jean ClimaTex,"ClimaTex Jeans — women, AW2026. Sustainability score 3.75/10.",Apparel,Jeans,ClimaTex,women,3.75,AW2026,69.5,True
+103,Straight Jean UrbanStep,"UrbanStep Jeans — women, AW2026. Sustainability score 3.39/10.",Apparel,Jeans,UrbanStep,women,3.39,AW2026,67.08,True
+104,Straight Jean ClimaTex,"ClimaTex Jeans — women, AW2025. Sustainability score 4.08/10.",Apparel,Jeans,ClimaTex,women,4.08,AW2025,73.44,True
+105,Summer Dress NaturaPro,"NaturaPro Dresses — women, SS2025. Sustainability score 6.16/10.",Apparel,Dresses,NaturaPro,women,6.16,SS2025,89.22,True
+106,Summer Dress Terracycle,"Terracycle Dresses — women, SS2026. Sustainability score 8.3/10.",Apparel,Dresses,Terracycle,women,8.3,SS2026,87.27,True
+107,Summer Dress Terracycle,"Terracycle Dresses — women, SS2026. Sustainability score 6.02/10.",Apparel,Dresses,Terracycle,women,6.02,SS2026,56.41,True
+108,Summer Dress GreenLine,"GreenLine Dresses — women, SS2025. Sustainability score 7.6/10.",Apparel,Dresses,GreenLine,women,7.6,SS2025,46.46,True
+109,Summer Dress NeoFit,"NeoFit Dresses — women, SS2025. Sustainability score 8.59/10.",Apparel,Dresses,NeoFit,women,8.59,SS2025,43.6,True
+110,Summer Dress NaturaPro,"NaturaPro Dresses — women, SS2026. Sustainability score 8.76/10.",Apparel,Dresses,NaturaPro,women,8.76,SS2026,40.94,True
+111,Summer Dress NaturaPro,"NaturaPro Dresses — women, SS2026. Sustainability score 8.13/10.",Apparel,Dresses,NaturaPro,women,8.13,SS2026,68.67,True
+112,Summer Dress Terracycle,"Terracycle Dresses — women, SS2026. Sustainability score 6.06/10.",Apparel,Dresses,Terracycle,women,6.06,SS2026,45.76,True
+113,Wool Coat GreenLine,"GreenLine Outerwear — men, AW2026. Sustainability score 6.66/10.",Apparel,Outerwear,GreenLine,men,6.66,AW2026,224.17,True
+114,Wool Coat UrbanStep,"UrbanStep Outerwear — men, AW2026. Sustainability score 4.87/10.",Apparel,Outerwear,UrbanStep,men,4.87,AW2026,176.77,True
+115,Wool Coat NaturaPro,"NaturaPro Outerwear — men, AW2026. Sustainability score 5.89/10.",Apparel,Outerwear,NaturaPro,men,5.89,AW2026,188.12,True
+116,Wool Coat NeoFit,"NeoFit Outerwear — men, AW2025. Sustainability score 7.23/10.",Apparel,Outerwear,NeoFit,men,7.23,AW2025,148.8,True
+117,Wool Coat UrbanStep,"UrbanStep Outerwear — men, AW2026. Sustainability score 5.18/10.",Apparel,Outerwear,UrbanStep,men,5.18,AW2026,188.98,True
+118,Wool Coat NeoFit,"NeoFit Outerwear — men, AW2025. Sustainability score 7.37/10.",Apparel,Outerwear,NeoFit,men,7.37,AW2025,214.56,True
+119,Wool Coat PureMove,"PureMove Outerwear — men, AW2025. Sustainability score 5.4/10.",Apparel,Outerwear,PureMove,men,5.4,AW2025,133.36,True
+120,Wool Coat GreenLine,"GreenLine Outerwear — men, AW2025. Sustainability score 6.79/10.",Apparel,Outerwear,GreenLine,men,6.79,AW2025,218.83,True
+121,Trench Coat ClimaTex,"ClimaTex Outerwear — women, AW2026. Sustainability score 6.97/10.",Apparel,Outerwear,ClimaTex,women,6.97,AW2026,165.67,True
+122,Trench Coat NeoFit,"NeoFit Outerwear — women, AW2025. Sustainability score 7.2/10.",Apparel,Outerwear,NeoFit,women,7.2,AW2025,213.71,True
+123,Trench Coat ClimaTex,"ClimaTex Outerwear — women, AW2026. Sustainability score 6.55/10.",Apparel,Outerwear,ClimaTex,women,6.55,AW2026,118.19,True
+124,Trench Coat Terracycle,"Terracycle Outerwear — women, AW2025. Sustainability score 6.23/10.",Apparel,Outerwear,Terracycle,women,6.23,AW2025,180.97,True
+125,Trench Coat Terracycle,"Terracycle Outerwear — women, AW2026. Sustainability score 5.13/10.",Apparel,Outerwear,Terracycle,women,5.13,AW2026,165.41,True
+126,Trench Coat Terracycle,"Terracycle Outerwear — women, AW2025. Sustainability score 8.02/10.",Apparel,Outerwear,Terracycle,women,8.02,AW2025,119.21,True
+127,Trench Coat NaturaPro,"NaturaPro Outerwear — women, AW2025. Sustainability score 6.94/10.",Apparel,Outerwear,NaturaPro,women,6.94,AW2025,165.53,True
+128,Trench Coat ClimaTex,"ClimaTex Outerwear — women, AW2025. Sustainability score 7.0/10.",Apparel,Outerwear,ClimaTex,women,7.0,AW2025,219.09,True
+129,Puffer Jacket NeoFit,"NeoFit Outerwear — unisex, AW2025. Sustainability score 5.25/10.",Apparel,Outerwear,NeoFit,unisex,5.25,AW2025,144.45,True
+130,Puffer Jacket ClimaTex,"ClimaTex Outerwear — unisex, AW2026. Sustainability score 6.65/10.",Apparel,Outerwear,ClimaTex,unisex,6.65,AW2026,99.32,True
+131,Puffer Jacket UrbanStep,"UrbanStep Outerwear — unisex, AW2025. Sustainability score 4.1/10.",Apparel,Outerwear,UrbanStep,unisex,4.1,AW2025,135.41,True
+132,Puffer Jacket ClimaTex,"ClimaTex Outerwear — unisex, AW2025. Sustainability score 5.33/10.",Apparel,Outerwear,ClimaTex,unisex,5.33,AW2025,179.19,True
+133,Puffer Jacket NeoFit,"NeoFit Outerwear — unisex, AW2026. Sustainability score 4.49/10.",Apparel,Outerwear,NeoFit,unisex,4.49,AW2026,123.56,True
+134,Puffer Jacket NeoFit,"NeoFit Outerwear — unisex, AW2026. Sustainability score 3.68/10.",Apparel,Outerwear,NeoFit,unisex,3.68,AW2026,151.1,True
+135,Puffer Jacket UrbanStep,"UrbanStep Outerwear — unisex, AW2026. Sustainability score 5.45/10.",Apparel,Outerwear,UrbanStep,unisex,5.45,AW2026,119.67,True
+136,Puffer Jacket Terracycle,"Terracycle Outerwear — unisex, AW2025. Sustainability score 6.48/10.",Apparel,Outerwear,Terracycle,unisex,6.48,AW2025,112.68,True
+137,Training Hoodie NeoFit,"NeoFit Sportswear — unisex, SS2026. Sustainability score 7.49/10.",Apparel,Sportswear,NeoFit,unisex,7.49,SS2026,42.85,True
+138,Training Hoodie Terracycle,"Terracycle Sportswear — unisex, SS2026. Sustainability score 7.6/10.",Apparel,Sportswear,Terracycle,unisex,7.6,SS2026,73.87,True
+139,Training Hoodie GreenLine,"GreenLine Sportswear — unisex, SS2026. Sustainability score 8.31/10.",Apparel,Sportswear,GreenLine,unisex,8.31,SS2026,60.83,True
+140,Training Hoodie NaturaPro,"NaturaPro Sportswear — unisex, AW2025. Sustainability score 6.49/10.",Apparel,Sportswear,NaturaPro,unisex,6.49,AW2025,62.52,True
+141,Training Hoodie UrbanStep,"UrbanStep Sportswear — unisex, SS2026. Sustainability score 6.77/10.",Apparel,Sportswear,UrbanStep,unisex,6.77,SS2026,62.61,True
+142,Training Hoodie EcoWear,"EcoWear Sportswear — unisex, AW2025. Sustainability score 6.04/10.",Apparel,Sportswear,EcoWear,unisex,6.04,AW2025,52.69,True
+143,Training Hoodie NeoFit,"NeoFit Sportswear — unisex, AW2025. Sustainability score 6.96/10.",Apparel,Sportswear,NeoFit,unisex,6.96,AW2025,73.17,True
+144,Training Hoodie GreenLine,"GreenLine Sportswear — unisex, AW2025. Sustainability score 6.39/10.",Apparel,Sportswear,GreenLine,unisex,6.39,AW2025,45.42,True
+145,Tote Bag EcoWear,"EcoWear Bags — women, SS2026. Sustainability score 9.13/10.",Accessories,Bags,EcoWear,women,9.13,SS2026,64.79,True
+146,Tote Bag GreenLine,"GreenLine Bags — women, SS2025. Sustainability score 6.96/10.",Accessories,Bags,GreenLine,women,6.96,SS2025,61.88,True
+147,Tote Bag GreenLine,"GreenLine Bags — women, AW2025. Sustainability score 6.63/10.",Accessories,Bags,GreenLine,women,6.63,AW2025,67.45,True
+148,Tote Bag PureMove,"PureMove Bags — women, SS2026. Sustainability score 8.33/10.",Accessories,Bags,PureMove,women,8.33,SS2026,78.63,True
+149,Tote Bag ClimaTex,"ClimaTex Bags — women, AW2025. Sustainability score 7.22/10.",Accessories,Bags,ClimaTex,women,7.22,AW2025,45.53,True
+150,Tote Bag PureMove,"PureMove Bags — women, AW2025. Sustainability score 9.34/10.",Accessories,Bags,PureMove,women,9.34,AW2025,51.55,True
+151,Tote Bag ClimaTex,"ClimaTex Bags — women, SS2026. Sustainability score 8.83/10.",Accessories,Bags,ClimaTex,women,8.83,SS2026,69.62,True
+152,Tote Bag NaturaPro,"NaturaPro Bags — women, SS2026. Sustainability score 8.95/10.",Accessories,Bags,NaturaPro,women,8.95,SS2026,78.48,True
+153,Backpack GreenLine,"GreenLine Bags — unisex, AW2026. Sustainability score 4.18/10.",Accessories,Bags,GreenLine,unisex,4.18,AW2026,88.65,True
+154,Backpack NeoFit,"NeoFit Bags — unisex, SS2025. Sustainability score 4.36/10.",Accessories,Bags,NeoFit,unisex,4.36,SS2025,72.73,True
+155,Backpack Terracycle,"Terracycle Bags — unisex, AW2026. Sustainability score 4.56/10.",Accessories,Bags,Terracycle,unisex,4.56,AW2026,49.19,True
+156,Backpack GreenLine,"GreenLine Bags — unisex, AW2025. Sustainability score 4.32/10.",Accessories,Bags,GreenLine,unisex,4.32,AW2025,86.55,True
+157,Backpack ClimaTex,"ClimaTex Bags — unisex, AW2026. Sustainability score 7.26/10.",Accessories,Bags,ClimaTex,unisex,7.26,AW2026,89.23,True
+158,Backpack EcoWear,"EcoWear Bags — unisex, AW2026. Sustainability score 5.31/10.",Accessories,Bags,EcoWear,unisex,5.31,AW2026,64.82,True
+159,Backpack UrbanStep,"UrbanStep Bags — unisex, SS2025. Sustainability score 4.1/10.",Accessories,Bags,UrbanStep,unisex,4.1,SS2025,63.75,True
+160,Backpack NeoFit,"NeoFit Bags — unisex, SS2026. Sustainability score 4.48/10.",Accessories,Bags,NeoFit,unisex,4.48,SS2026,84.57,True
+161,Bucket Hat ClimaTex,"ClimaTex Hats — unisex, SS2026. Sustainability score 7.35/10.",Accessories,Hats,ClimaTex,unisex,7.35,SS2026,29.83,True
+162,Bucket Hat ClimaTex,"ClimaTex Hats — unisex, SS2025. Sustainability score 9.26/10.",Accessories,Hats,ClimaTex,unisex,9.26,SS2025,28.46,True
+163,Bucket Hat Terracycle,"Terracycle Hats — unisex, SS2026. Sustainability score 7.37/10.",Accessories,Hats,Terracycle,unisex,7.37,SS2026,21.67,True
+164,Bucket Hat UrbanStep,"UrbanStep Hats — unisex, SS2025. Sustainability score 7.59/10.",Accessories,Hats,UrbanStep,unisex,7.59,SS2025,31.19,True
+165,Bucket Hat EcoWear,"EcoWear Hats — unisex, SS2026. Sustainability score 8.6/10.",Accessories,Hats,EcoWear,unisex,8.6,SS2026,22.05,True
+166,Bucket Hat UrbanStep,"UrbanStep Hats — unisex, SS2025. Sustainability score 9.26/10.",Accessories,Hats,UrbanStep,unisex,9.26,SS2025,19.88,True
+167,Bucket Hat PureMove,"PureMove Hats — unisex, SS2025. Sustainability score 7.73/10.",Accessories,Hats,PureMove,unisex,7.73,SS2025,30.22,True
+168,Bucket Hat NeoFit,"NeoFit Hats — unisex, SS2025. Sustainability score 8.04/10.",Accessories,Hats,NeoFit,unisex,8.04,SS2025,22.09,True
+169,Beanie NeoFit,"NeoFit Hats — unisex, AW2025. Sustainability score 8.55/10.",Accessories,Hats,NeoFit,unisex,8.55,AW2025,16.02,True
+170,Beanie NaturaPro,"NaturaPro Hats — unisex, AW2026. Sustainability score 7.59/10.",Accessories,Hats,NaturaPro,unisex,7.59,AW2026,28.1,True
+171,Beanie NeoFit,"NeoFit Hats — unisex, AW2025. Sustainability score 7.53/10.",Accessories,Hats,NeoFit,unisex,7.53,AW2025,18.8,True
+172,Beanie NeoFit,"NeoFit Hats — unisex, AW2025. Sustainability score 8.81/10.",Accessories,Hats,NeoFit,unisex,8.81,AW2025,18.62,True
+173,Beanie NeoFit,"NeoFit Hats — unisex, AW2026. Sustainability score 8.2/10.",Accessories,Hats,NeoFit,unisex,8.2,AW2026,17.0,True
+174,Beanie GreenLine,"GreenLine Hats — unisex, AW2026. Sustainability score 8.87/10.",Accessories,Hats,GreenLine,unisex,8.87,AW2026,27.46,True
+175,Beanie GreenLine,"GreenLine Hats — unisex, AW2026. Sustainability score 7.63/10.",Accessories,Hats,GreenLine,unisex,7.63,AW2026,27.17,True
+176,Beanie EcoWear,"EcoWear Hats — unisex, AW2025. Sustainability score 7.59/10.",Accessories,Hats,EcoWear,unisex,7.59,AW2025,19.4,True
+177,Leather Belt EcoWear,"EcoWear Belts — unisex, AW2025. Sustainability score 3.28/10.",Accessories,Belts,EcoWear,unisex,3.28,AW2025,34.47,True
+178,Leather Belt ClimaTex,"ClimaTex Belts — unisex, SS2025. Sustainability score 4.38/10.",Accessories,Belts,ClimaTex,unisex,4.38,SS2025,32.6,True
+179,Leather Belt Terracycle,"Terracycle Belts — unisex, SS2026. Sustainability score 4.45/10.",Accessories,Belts,Terracycle,unisex,4.45,SS2026,35.71,True
+180,Leather Belt NeoFit,"NeoFit Belts — unisex, AW2025. Sustainability score 4.5/10.",Accessories,Belts,NeoFit,unisex,4.5,AW2025,33.2,True
+181,Leather Belt NaturaPro,"NaturaPro Belts — unisex, AW2025. Sustainability score 4.74/10.",Accessories,Belts,NaturaPro,unisex,4.74,AW2025,47.3,True
+182,Leather Belt NeoFit,"NeoFit Belts — unisex, AW2025. Sustainability score 3.74/10.",Accessories,Belts,NeoFit,unisex,3.74,AW2025,54.21,True
+183,Leather Belt NeoFit,"NeoFit Belts — unisex, SS2025. Sustainability score 3.8/10.",Accessories,Belts,NeoFit,unisex,3.8,SS2025,52.73,True
+184,Leather Belt NaturaPro,"NaturaPro Belts — unisex, SS2025. Sustainability score 4.01/10.",Accessories,Belts,NaturaPro,unisex,4.01,SS2025,27.37,True
+185,Merino Scarf Terracycle,"Terracycle Scarves — unisex, AW2026. Sustainability score 7.2/10.",Accessories,Scarves,Terracycle,unisex,7.2,AW2026,39.64,True
+186,Merino Scarf Terracycle,"Terracycle Scarves — unisex, AW2025. Sustainability score 8.79/10.",Accessories,Scarves,Terracycle,unisex,8.79,AW2025,43.38,True
+187,Merino Scarf ClimaTex,"ClimaTex Scarves — unisex, AW2026. Sustainability score 7.11/10.",Accessories,Scarves,ClimaTex,unisex,7.11,AW2026,40.55,True
+188,Merino Scarf NaturaPro,"NaturaPro Scarves — unisex, AW2025. Sustainability score 9.45/10.",Accessories,Scarves,NaturaPro,unisex,9.45,AW2025,38.24,True
+189,Merino Scarf UrbanStep,"UrbanStep Scarves — unisex, AW2025. Sustainability score 8.02/10.",Accessories,Scarves,UrbanStep,unisex,8.02,AW2025,50.14,True
+190,Merino Scarf EcoWear,"EcoWear Scarves — unisex, AW2026. Sustainability score 8.52/10.",Accessories,Scarves,EcoWear,unisex,8.52,AW2026,34.28,True
+191,Merino Scarf EcoWear,"EcoWear Scarves — unisex, AW2026. Sustainability score 7.59/10.",Accessories,Scarves,EcoWear,unisex,7.59,AW2026,33.79,True
+192,Merino Scarf NeoFit,"NeoFit Scarves — unisex, AW2025. Sustainability score 8.42/10.",Accessories,Scarves,NeoFit,unisex,8.42,AW2025,41.49,True
+193,Classic Sunglasses ClimaTex,"ClimaTex Sunglasses — unisex, SS2025. Sustainability score 4.12/10.",Accessories,Sunglasses,ClimaTex,unisex,4.12,SS2025,62.95,True
+194,Classic Sunglasses GreenLine,"GreenLine Sunglasses — unisex, SS2026. Sustainability score 4.19/10.",Accessories,Sunglasses,GreenLine,unisex,4.19,SS2026,46.18,True
+195,Classic Sunglasses PureMove,"PureMove Sunglasses — unisex, SS2025. Sustainability score 3.08/10.",Accessories,Sunglasses,PureMove,unisex,3.08,SS2025,63.42,True
+196,Classic Sunglasses ClimaTex,"ClimaTex Sunglasses — unisex, SS2025. Sustainability score 5.74/10.",Accessories,Sunglasses,ClimaTex,unisex,5.74,SS2025,45.71,True
+197,Classic Sunglasses Terracycle,"Terracycle Sunglasses — unisex, SS2025. Sustainability score 5.11/10.",Accessories,Sunglasses,Terracycle,unisex,5.11,SS2025,56.0,True
+198,Classic Sunglasses Terracycle,"Terracycle Sunglasses — unisex, SS2025. Sustainability score 6.0/10.",Accessories,Sunglasses,Terracycle,unisex,6.0,SS2025,52.76,True
+199,Classic Sunglasses UrbanStep,"UrbanStep Sunglasses — unisex, SS2025. Sustainability score 3.22/10.",Accessories,Sunglasses,UrbanStep,unisex,3.22,SS2025,30.43,True
+200,Classic Sunglasses ClimaTex,"ClimaTex Sunglasses — unisex, SS2026. Sustainability score 5.43/10.",Accessories,Sunglasses,ClimaTex,unisex,5.43,SS2026,64.89,True

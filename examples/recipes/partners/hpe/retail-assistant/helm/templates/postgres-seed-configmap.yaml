@@ -1,0 +1,37 @@
+{{- if and .Values.postgres.enabled .Values.postgres.seedEnabled }}
+---
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .Release.Name }}-postgres-csv"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  Stores.csv: |
+{{ .Files.Get "files/csv/Stores.csv" | indent 4 }}
+  Employees.csv: |
+{{ .Files.Get "files/csv/Employees.csv" | indent 4 }}
+  Customers.csv: |
+{{ .Files.Get "files/csv/Customers.csv" | indent 4 }}
+  Products.csv: |
+{{ .Files.Get "files/csv/Products.csv" | indent 4 }}
+  Inventory.csv: |
+{{ .Files.Get "files/csv/Inventory.csv" | indent 4 }}
+  Promotions.csv: |
+{{ .Files.Get "files/csv/Promotions.csv" | indent 4 }}
+  Orders.csv: |
+{{ .Files.Get "files/csv/Orders.csv" | indent 4 }}
+  OrderItems.csv: |
+{{ .Files.Get "files/csv/OrderItems.csv" | indent 4 }}
+  ReorderRequests.csv: |
+{{ .Files.Get "files/csv/ReorderRequests.csv" | indent 4 }}
+  InventoryTransfers.csv: |
+{{ .Files.Get "files/csv/InventoryTransfers.csv" | indent 4 }}
+{{- end }}

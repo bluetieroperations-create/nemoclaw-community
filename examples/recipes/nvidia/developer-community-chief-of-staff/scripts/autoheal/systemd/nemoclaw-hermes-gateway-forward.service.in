@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=NemoClaw Hermes host gateway forward
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=@RUNTIME_ENV@
+WorkingDirectory=@EXAMPLE_DIR@
+ExecStart=/usr/bin/openshell forward service ${SANDBOX_NAME} --target-port 8642 --local 127.0.0.1:8642
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

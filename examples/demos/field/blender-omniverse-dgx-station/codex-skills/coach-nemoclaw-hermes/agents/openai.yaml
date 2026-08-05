@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+interface:
+  display_name: "Coach NemoClaw Hermes"
+  short_description: "Coach Hermes through Blender and OV work"
+  default_prompt: "Coach NemoClaw Hermes through this task, delegate specialized execution, respect host and sandbox boundaries, allow adequate execution time, and independently verify the results."

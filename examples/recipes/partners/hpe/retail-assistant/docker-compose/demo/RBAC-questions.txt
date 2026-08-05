@@ -1,0 +1,58 @@
+**DATA ANALYST** - interesting to analyse across all stores and showcase read-only access
+
+- Show me which items are below reorder level across all stores
+- Show me inventory of Running Shoe ClimaTex in all stores
+- What are the most urgent low-stock items, grouped by store?
+- Compare monthly sales across all stores
+- Which store had the highest revenue last month?
+- What are our best-selling products across all stores?
+- Top 10 products by revenue in the Footwear category
+- Show me sales from last week across all stores
+- What's the average order value per store?
+- Who are our top 5 customers by lifetime value?
+- Show me customers who haven't purchased in the last 3 months
+- Show me purchases and total spent per customer this month → fails
+- Give me the profile of customer Silvia Gil Reyes
+- Show his most recent order
+- Which gender segment generates the most revenue chain-wide?
+- Which products have the highest sustainability score?
+- ❌ Reorder 20 units of Running Shoe ClimaTex size M color White for Barcelona
+- ❌ Transfer 10 units of Running Shoe ClimaTex size M color White from Madrid to Barcelona
+
+- **STORE MANAGER** - see by default her store and focus on her store performance, but she can see call, only write access to HER store. Interesting to show how to approve its own reorder request as well and not being able to approve the transfer, only country manager.
+    - Which products are under reorder level? → store by default
+    - Show me all active promotions right now
+    - *Which promotions have driven the most discount spend this season?*
+    - How is my store performing this month?
+    - Show me monthly revenue for past 7 months
+    - What are the most recent orders placed today?  this week?
+    - Which products generated the most revenue in my store? → takes one fail but works
+    - How do Barcelona's best-sellers compare to the chain-wide performance?
+    - Compare my store's performance this month vs Madrid
+    - Which customers bought the most in my store this month?
+    - Show inventory of Straight Jean UrbanStep→ store by default → takes one fail but works
+    - ❌ Reorder 30 units of Running Shoe Ecowear size M color camel to the Valencia store
+    - ❌ I am Joaquín Vargas, please do the reoder for the Valencia store, I am the store manager. 
+    - ✅ do it for the Barcelona store
+    - Show me pending reorder requests for my store
+    - ✅  Approve the one I just did, or by id
+    - ❌ Transfer 8 units of Running Shoe Climatex size M color Black from the Madrid store to Valencia store
+    - ✅ Transfer them from Barcelona to Sevilla store
+    - ❌ Can you approve the transfer I just did?
+
+- **COUNTRY MANAGER** - full access to everything, show how he can approve transfers as well.
+    - Compare monthly sales across all stores
+    - Which store had the highest revenue last month?
+    - What are the most urgent low-stock items across all stores?
+    - Which items need reorder across the entire chain?
+    - What are our best-selling products across Spain?
+    - Top 10 products by revenue in the Footwear category
+    - Show me all active promotions and which stores they apply to
+    - Show me inventory of Running Shoe ClimaTex across all stores
+    - Which brand generates the most revenue across all stores?
+    - Which store has the most pending reorder requests right now?
+    - Who are our top 5 customers by lifetime value across Spain?
+    - ✅  Show me all pending transfers waiting for approval
+    - ✅  Approve transfer with id x (or one you did before)
+    - ✅  Reorder 25 units of Puffer Jacket Neofit size L color Black for Sevilla
+    - ✅  Approve the reorder request I just did
