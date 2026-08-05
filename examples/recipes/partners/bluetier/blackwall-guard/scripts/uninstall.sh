@@ -5,7 +5,7 @@
 
 # Remove an installed blackwall-guard plugin.
 #
-#   scripts/teardown.sh [DEST_DIR]
+#   scripts/uninstall.sh [DEST_DIR]
 #
 # Same DEST_DIR resolution as install.sh. Refuses to delete a directory that
 # does not look like this plugin (manifest id check), so a mistyped path can't

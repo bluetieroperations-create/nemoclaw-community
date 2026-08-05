@@ -14,6 +14,27 @@ This is defense-in-depth: it catches dangerous actions a compromised, mistaken, 
 prompt-injected agent might attempt — destructive shell commands, irreversible
 writes, data exfiltration, fund movement — independent of the model's own judgment.
 
+## Enforcement architecture: defense-in-depth, not an independent boundary
+
+Be precise about what this plugin is. The `before_tool_call` hook runs **inside
+the agent sandbox**, in the same process space the agent controls — so a
+sufficiently capable compromised agent could in principle disable or bypass it.
+It is **defense-in-depth**: an additional check that raises the cost of a bad
+action, layered *under* the boundaries that the agent cannot touch — the
+OpenShell network policy (which caps where the sandbox can reach regardless of
+what the agent runs) and the provider credential injection (which keeps the API
+key out of the sandbox entirely, so even a fully compromised agent cannot steal
+it or forge authenticated forecasts).
+
+An **independent** enforcement boundary for tool calls belongs outside the
+sandbox — OpenShell's Supervisor middleware is the natural home, since it
+observes tool traffic from a position the agent cannot modify. Supervisor is
+currently a research-preview integration that standard NemoClaw onboarding does
+not configure, so this example does not wire it; moving the forecast call into
+Supervisor (with the in-sandbox hook retained as the low-latency first layer)
+is the intended evolution, in coordination with the OpenShell maintainers.
+Until then, treat this integration as hardening, not as the boundary itself.
+
 > **Third-party integration — requirements & support.** This is an independent
 > community example, **not** a supported part of NemoClaw core. It calls the external
 > [BLACK_WALL](https://blackwalltier.com) service and **requires a BLACK_WALL API
@@ -47,9 +68,11 @@ writes, data exfiltration, fund movement — independent of the model's own judg
 | `skills/blackwall-verify/SKILL.md` | How to independently verify a decision receipt. |
 | `index.test.ts` | Vitest suite pinning the gate's decision state machine, the HTTPS-only credential guard, input minimization, fail-closed defaults, and the proxy CONNECT-header cap. Runnable in-repo: `npm install && npm test`. |
 | `package.json` | Dev harness for the test suite (vitest); not needed at runtime. |
-| `scripts/install.sh` | Copy the plugin into an OpenClaw plugin directory (`$OPENCLAW_PLUGIN_DIR` / `~/.openclaw/extensions`) and print the enable/key steps. |
+| `scripts/bring-up.sh` | Full OpenShell lifecycle: import the provider profile, create the provider with the key held gateway-side, create the sandbox with `policy.yaml` and the provider attached. |
+| `scripts/tear-down.sh` | Reverse of bring-up: delete the sandbox, the per-sandbox provider, and (with `--profile`) the imported profile. |
+| `scripts/install.sh` | Host-side dev loop only: copy the plugin into an OpenClaw plugin directory (`$OPENCLAW_PLUGIN_DIR` / `~/.openclaw/extensions`). In NemoClaw the plugin is baked into the sandbox image instead (see *Install & enable*). |
 | `scripts/verify.sh` | Three-stage check: unit tests, egress reachability, and a live credential-injection probe that distinguishes "no key arrived" / "placeholder passed through unreplaced" / "real key injected". |
-| `scripts/teardown.sh` | Remove the installed plugin (manifest-id guarded) and list the config/provider/policy entries to clean up. |
+| `scripts/uninstall.sh` | Host-side dev loop only: remove the installed plugin (manifest-id guarded). |
 | `providers/blackwall.yaml` | OpenShell provider profile that injects the API key at the L7 proxy on egress, so the key never enters the sandbox (see *Recommended deployment*). |
 | `policy.yaml` | OpenShell sandbox network policy allowing egress only to the BLACK_WALL forecast endpoints. |
 
@@ -92,9 +115,11 @@ L7 proxy on egress. Two files here express this:
 The plugin itself needs no change: it still sends `Authorization: Bearer
 $BLACKWALL_API_KEY`, but in the sandbox that value is the placeholder, and the real
 key exists only host-side. This mirrors the provider + policy pattern used by the
-[`personal-community-sentiment-triage`](../personal-community-sentiment-triage/)
-example. Merge `policy.yaml`'s `network_policies` entry into your sandbox policy and
-import `providers/blackwall.yaml` alongside your other OpenShell providers.
+[Developer Community Chief of Staff](../../nvidia/developer-community-chief-of-staff/README.md)
+recipe. `scripts/bring-up.sh` performs the profile import, provider creation, and
+policy application; to wire it into an existing deployment instead, merge
+`policy.yaml`'s `network_policies` entry into your sandbox policy and import
+`providers/blackwall.yaml` alongside your other OpenShell providers.
 
 ## What leaves the sandbox (data sharing)
 
@@ -131,21 +156,43 @@ and divergence severity, not tool output. Support and data-handling questions:
   signature against the published key at `/.well-known/blackwall-signing-keys.json`
   — no trust in any server required.
 
-## Install, verify, teardown
+## Lifecycle: bring-up, verify, tear-down
 
 ```bash
-scripts/install.sh                  # copy plugin into $OPENCLAW_PLUGIN_DIR
-                                    #   (default ~/.openclaw/extensions/blackwall-guard)
-scripts/verify.sh                   # unit tests + egress check + injection probe
-scripts/teardown.sh                 # remove it again (manifest-id guarded)
+export BLACKWALL_API_KEY=bw_live_…   # host-side only; never enters the sandbox
+export SANDBOX_IMAGE=<your OpenClaw-capable sandbox image with the plugin baked in>
+
+scripts/bring-up.sh                  # profile import -> provider create (key held
+                                     #   gateway-side) -> sandbox create with
+                                     #   policy.yaml + provider attached
+scripts/verify.sh                    # unit tests + egress + injection probe +
+                                     #   interception check (see below)
+scripts/tear-down.sh                 # sandbox -> provider (-> --profile) teardown
 ```
 
-Run `verify.sh` twice: once from the repo checkout (unit tests + reachability),
-and once **inside the sandbox** after wiring `providers/blackwall.yaml` — there,
-its third stage proves whether the L7 proxy really injected the credential at
-egress: HTTP 2xx means the real key was substituted; a `401 invalid_api_key`
-means the placeholder passed through unreplaced; a `401 missing_api_key` means
-no Authorization header arrived at all.
+### Install & enable (the plugin inside the sandbox)
+
+Current-convention recipes bake agent plugins into the sandbox image rather than
+mutating a live sandbox. Add this example's plugin directory (`index.ts`,
+`openclaw.plugin.json`, `skills/`) to your OpenClaw sandbox image — e.g. a
+`COPY` into the agent's plugin directory in your image's Dockerfile — and enable
+plugin id `nemoclaw-blackwall-guard` in the agent's config. For a host-side
+development loop *outside* NemoClaw, `scripts/install.sh` still copies the
+plugin into `$OPENCLAW_PLUGIN_DIR` (default `~/.openclaw/extensions/`).
+
+### Verification
+
+Run `verify.sh` in three places:
+
+- **From the repo checkout** — unit tests + endpoint reachability.
+- **Inside the sandbox** — stage 3 proves whether the L7 proxy really injected
+  the credential at egress: HTTP 2xx means the real key was substituted; a
+  `401 invalid_api_key` means the placeholder passed through unreplaced; a
+  `401 missing_api_key` means no Authorization header arrived at all.
+- **Host-side with `SANDBOX_NAME` set** — stage 4 proves a real OpenClaw tool
+  call is intercepted, by finding the hook's deterministic gate line
+  (`[blackwall] <mode> · <tool> → <verdict>`) in the sandbox logs. If none has
+  appeared yet, ask the sandboxed agent to run any tool and re-check.
 
 ## Validation
 
