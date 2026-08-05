@@ -1,4 +1,4 @@
-# blackwall-x402-payment-gate: Pre-Signature Payment Verdicts
+# x402-payment-gate: Pre-Signature Payment Verdicts
 
 An agent that can pay for things needs two layers of control: **where it can
 reach** (the OpenShell network policy) and **what it may pay** (an action-layer
@@ -15,6 +15,14 @@ is one signature away from paying a drainer, a sanctioned address, or a
 100x-gouged invoice. Egress policy alone cannot see the difference between a
 fair payment and a bad one — both are a single HTTPS request to the same
 facilitator. A pre-signature verdict can.
+
+> **Third-party integration — requirements & support.** This is an independent
+> community example contributed by BlueTier Operations, **not** a supported part
+> of NemoClaw core. It calls the external Blackwall verdict service — the
+> default public instance is **keyless and free** (no API key, no signup);
+> self-hosting is documented for real workloads. **Support** for this example
+> and the service is provided by BlueTier Operations, not NVIDIA — contact
+> <bluetier.operations@gmail.com>.
 
 ## Architecture
 
@@ -49,16 +57,28 @@ The gate runs at **two layers**, and the difference matters under attack:
 
 - **The skill** ([agents/hermes/skills/blackwall-payment-gate](agents/hermes/skills/blackwall-payment-gate/SKILL.md))
   instructs the agent to check before signing. It is guidance — a
-  prompt-injected or mistaken agent can skip it.
-- **The plugin** ([plugin/](plugin/)) is the backstop the agent cannot skip: an
+  prompt-injected or mistaken agent can simply not follow it.
+- **The plugin** ([plugin/](plugin/)) closes that gap at the runtime layer: an
   OpenClaw `before_tool_call` hook that recognizes payment-shaped tool calls
   (flat `payTo`/`amount` fields, an x402 402-challenge `accepts[]` entry, or a
   signed `X-PAYMENT` header), forecasts them, and blocks anything that isn't a
   GO — enforce-mode and fail-closed **by default**, because it fires only on
-  payments and a payment backstop that defaults to advisory is not a backstop.
+  payments and a payment gate that defaults to advisory is not a gate.
   A signed `X-PAYMENT` header is also passed through so Blackwall's payload-sim
   can cross-check that the signature really pays who the claim says.
   Non-payment tool calls pass through untouched, with zero forecast calls.
+
+Be precise about what the plugin is and is not. It cannot be skipped by
+*prompting* — unlike the skill, no injected instruction can talk the agent out
+of a hook the runtime fires on every tool call. But it runs **inside the agent
+sandbox**, so it is **defense-in-depth, not an independent security boundary**:
+a sufficiently capable compromised agent could in principle disable it. The
+layers the agent *cannot* touch are the OpenShell network policy (which caps
+where the sandbox can reach regardless of what the agent runs) and — because
+this integration is keyless — there is no credential in the sandbox to steal
+at all. Moving the forecast call into OpenShell's Supervisor middleware (an
+observation point outside the sandbox) is the natural independent-boundary
+evolution once that integration is generally available.
 
 The sandbox's network policy (`policy.yaml`) allows exactly four routes on one
 host — the verdict and outcome-report endpoints plus health and discovery —
@@ -94,7 +114,7 @@ moving money.
 Requires only Python 3.10+ (the client is stdlib-only; nothing to install).
 
 ```bash
-cd examples/blackwall-x402-payment-gate/scripts
+cd examples/recipes/partners/bluetier/x402-payment-gate/scripts
 python3 demo_verdicts.py
 ```
 
@@ -136,8 +156,8 @@ python3 blackwall_client.py --counterparty 0x02c2fcafce36b4aadb39625866bc6b1699d
   self-contained: one host, four routes, enforce mode.
 - **Skill:** drop
   [agents/hermes/skills/blackwall-payment-gate](agents/hermes/skills/blackwall-payment-gate/SKILL.md)
-  into your Hermes agent's skills directory (alongside the
-  [personal-community-sentiment-triage](../personal-community-sentiment-triage/README.md)
+  into your Hermes agent's skills directory (following the
+  [Developer Community Chief of Staff](../../nvidia/developer-community-chief-of-staff/README.md)
   skill layout). The skill instructs the agent to gate every x402 payment
   through the client before signing, escalate HOLDs with reasons, and report
   outcomes after settlement.
@@ -147,22 +167,44 @@ python3 blackwall_client.py --counterparty 0x02c2fcafce36b4aadb39625866bc6b1699d
   `BLACKWALL_X402_MODE`, `BLACKWALL_X402_FAIL_CLOSED`, `BLACKWALL_PAYER`) are
   documented in `plugin/openclaw.plugin.json`; add your wallet tool's name to
   `paymentTools` if it isn't already payment-shaped. Its tests run in-repo:
-  `cd plugin && npm install && npm test` (32 tests). The canonical source of
-  this plugin is `integrations/openclaw/` in the Blackwall repository; this
-  directory vendors it.
+  `cd plugin && npm install && npm test` (38 tests; `npm run eval:live` runs
+  the opt-in live scorecard). The canonical source of this plugin is
+  `integrations/openclaw/` in the Blackwall repository; this directory vendors
+  it.
 - **Outcome loop:** after a GO payment settles, call
   `report_outcome(receipt_id, report_token, "settled")` — self-reported
   outcomes feed the reputation corpus that scored the payment.
+
+## Lifecycle: bring-up, verify, tear-down
+
+```bash
+export SANDBOX_IMAGE=<your OpenClaw-capable sandbox image with plugin/ baked in>
+
+scripts/bring-up.sh     # sandbox create with policy.yaml applied (keyless —
+                        #   no provider or credential to configure)
+scripts/verify.sh       # live 4-scenario verdict walkthrough + 38 plugin unit
+                        #   tests + real tool-call interception check
+scripts/tear-down.sh    # delete the demo sandbox
+```
+
+Because the integration is keyless, the lifecycle has no provider step at all:
+bake the [plugin/](plugin/) directory into your OpenClaw sandbox image (a
+`COPY` into the agent's plugin directory), enable plugin id
+`blackwall-x402-gate`, and the only OpenShell objects the recipe manages are
+the sandbox and its policy. `verify.sh`'s third stage proves a real OpenClaw
+tool call is intercepted by finding the hook's deterministic gate line
+(`[blackwall-x402] <mode> · <tool> → <verdict>`) in the sandbox logs.
 
 ## Limits to know
 
 - **The service is advisory; enforcement lives with you.** Blackwall never
   signs, holds keys, or blocks settlement itself — a verdict has exactly the
-  force your deployment gives it. The skill alone is advisory; the plugin hook
-  makes the verdict mandatory at the runtime layer (enforce + fail-closed by
-  default). Signals that depend on seller-controlled inputs (e.g. the resource
-  URL that drives the category price baseline) are HOLD-only and evadable by a
-  motivated seller.
+  force your deployment gives it. The skill alone is guidance; the plugin hook
+  enforces at the runtime layer (enforce + fail-closed by default) but is
+  defense-in-depth, not an independent boundary — see *Architecture*. Signals
+  that depend on seller-controlled inputs (e.g. the resource URL that drives
+  the category price baseline) are HOLD-only and evadable by a motivated
+  seller.
 - **The hook only gates what it can recognize.** A payment tool whose name and
   params match none of the recognized shapes passes through unguarded — add
   your wallet tool's name to `paymentTools` so unscorable calls to it block

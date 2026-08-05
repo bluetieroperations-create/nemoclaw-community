@@ -18,6 +18,7 @@ again by contributor provenance.
 
 | Contributor | Example | Description |
 | --- | --- | --- |
+| BlueTier | [x402 Payment Gate](recipes/partners/bluetier/x402-payment-gate/README.md) | Gates an agent's x402 payments behind pre-signature GO/HOLD/STOP verdicts (counterparty reputation, price anomaly, OFAC sanctions) at two layers — an agent skill plus a `before_tool_call` hook — keyless, with only the payment claim leaving the sandbox. |
 | HPE | [Retail Assistant](recipes/partners/hpe/retail-assistant/README.md) | Provides role-aware retail operations through Telegram, FastAPI, PostgreSQL, Docker Compose, and Helm. |
 | Tavily | [Watchtower](recipes/partners/tavily/watchtower/README.md) | Runs scheduled, cited web monitoring with persistent deduplication and auditable outputs. |
 
