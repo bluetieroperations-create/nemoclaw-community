@@ -69,7 +69,13 @@ flowchart LR
 ```
 
 The denied edge is the central security property: the rail route is absent
-from `policy.yaml`, so a prompt cannot override it. Everything in-sandbox is
+from `policy.yaml`, so a prompt cannot override it. Note the deliberate bind
+asymmetry — the **gate** binds a host interface the sandbox can reach (via the
+`host.openshell.internal` route; `RELEASE_GATE_BIND`, default `0.0.0.0`),
+because the agent must be able to *submit* intents; the **rail** binds
+`127.0.0.1` (host loopback) and is unreachable from the sandbox at the network
+layer. The gate exposes only the least-privileged operation (submit); the
+sensitive operation (settle) lives behind loopback. Everything in-sandbox is
 **advisory** — the skill's pre-check warns the user early, but nothing the
 agent does or skips changes what the gate enforces.
 
@@ -86,8 +92,11 @@ agent does or skips changes what the gate enforces.
   sign → settle ordering is enforced by code and pinned by unit test.
 - A HOLD requires a **named human** plus the approval token printed only to
   the gate's host-side log — a value the sandbox cannot read; the release
-  transition is lock-guarded against concurrent double-approval. A STOP is
-  terminal and cannot be approved by anyone.
+  transition is lock-guarded against concurrent double-approval. **Approval
+  re-screens with a fresh verdict**: a named human overrides a HOLD, but a
+  fresh STOP (e.g. the payee became sanctioned between submit and approval)
+  refuses the release even so — and the re-forecast precedes signing, so the
+  decision stays pre-signature. A STOP is terminal.
 - A verdict-service failure HOLDS — the mandatory layer never fails open.
 - Only the payment claim (`counterparty, amount, asset, chain, resource`)
   leaves the sandbox or the host — never tool payloads, never keys.
