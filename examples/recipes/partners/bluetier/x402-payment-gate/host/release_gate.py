@@ -8,10 +8,20 @@
 Runs OUTSIDE the agent sandbox (mirroring the payment-ops-hermes pattern):
 the sandboxed agent can only SUBMIT a payment intent here; it holds no
 signing capability and no route to the payment rail. This gate runs the
-mandatory Blackwall verdict, and only a GO proceeds to sign-then-settle —
-the decision is genuinely pre-signature because no signature exists until
-after the verdict, and the signing step lives on a code path that only the
-RELEASE branch reaches (pinned by test_release_gate.py).
+mandatory Blackwall verdict, and a payment reaches sign-then-settle through
+exactly TWO host-side authorization paths, never any other way:
+
+  1. Automated release (process_intent): an intent settles unattended ONLY on
+     a fresh GO verdict. HOLD and STOP never settle here.
+  2. Human-approved release (process_approval): a HELD intent (a fresh HOLD,
+     or a verdict-service failure that held it) can be released by a NAMED
+     human plus the host-side approval token. This path re-screens with a
+     FRESH verdict first: the human overrides a HOLD, but a fresh STOP refuses
+     the release even with a valid operator + token.
+
+Both paths decide BEFORE any signature exists (the signing step lives on a
+code path only the RELEASE branch reaches, pinned by test_release_gate.py),
+so the decision is genuinely pre-signature. A STOP is terminal on both paths.
 
 Verdict mapping (family contract shared with the Blackwall langchain,
 wallet, and openclaw guards): GO -> release, HOLD -> hold for a human,
@@ -57,12 +67,14 @@ BLACKWALL_URL = os.environ.get(
     "BLACKWALL_URL", "https://blackwall-free.onrender.com")
 RAIL_URL = os.environ.get("RAIL_URL", "http://127.0.0.1:8780")
 GATE_PORT = int(os.environ.get("RELEASE_GATE_PORT", "8790"))
-# The gate must be reachable from the sandbox (via the host.openshell.internal
-# route in policy.yaml), so it CANNOT bind host loopback. Default 0.0.0.0; set
-# RELEASE_GATE_BIND to the specific host-internal interface in production. The
-# RAIL stays 127.0.0.1 (host-only) -- that asymmetry IS the denied edge: the
-# gate accepts intents (least privilege), only the host reaches settlement.
-GATE_BIND = os.environ.get("RELEASE_GATE_BIND", "0.0.0.0")
+# SUBMIT/status listener bind. Default 127.0.0.1 (host-only, SAFE): it never
+# exposes submission on every interface. For real sandbox reach, set
+# RELEASE_GATE_BIND to the SPECIFIC host-internal bridge interface behind
+# host.openshell.internal -- never 0.0.0.0. The APPROVE listener is a separate
+# server pinned to 127.0.0.1 (a named human on the host, never the sandbox).
+# The RAIL also stays 127.0.0.1 -- that asymmetry IS the denied edge.
+GATE_BIND = os.environ.get("RELEASE_GATE_BIND", "127.0.0.1")
+APPROVE_PORT = int(os.environ.get("RELEASE_GATE_APPROVE_PORT", "8791"))
 FORECAST_TIMEOUT = int(os.environ.get("BLACKWALL_TIMEOUT", "90"))
 
 
@@ -181,8 +193,13 @@ def new_record(intent, status, detail):
 
 
 def resolve_gate_bind(explicit):
-    """Gate bind address. Never host loopback (the sandbox must reach it);
-    an explicit value wins, else GATE_BIND (default 0.0.0.0)."""
+    """Bind for the SUBMIT/status listener (the only sandbox-facing surface).
+
+    Defaults to host loopback (127.0.0.1) -- SAFE, never promiscuous: it never
+    exposes submission on every host interface. To let the sandbox reach it,
+    the operator sets RELEASE_GATE_BIND to the SPECIFIC host-internal bridge
+    interface (the address behind host.openshell.internal), not 0.0.0.0. The
+    approval listener is a separate, always-loopback server (see main)."""
     return explicit if explicit else GATE_BIND
 
 
@@ -262,13 +279,19 @@ def settle(intent, signature):
 
 
 # ---------------------------------------------------------------------------
-# HTTP server (127.0.0.1 only)
+# HTTP server -- TWO listeners with different exposure:
+#   * SUBMIT/status  (sandbox-facing, RELEASE_GATE_BIND): the maker path. The
+#     most a sandboxed prompt can do is submit an intent + read its status.
+#   * APPROVE        (always 127.0.0.1): the human release path. Bound to host
+#     loopback so a named operator on the host uses it and the sandbox cannot
+#     reach it at the network layer even if the submit interface is exposed.
+# Splitting them means exposing the submit interface never exposes /approve.
 # ---------------------------------------------------------------------------
 
 INTENTS = {}
 
 
-class Handler(BaseHTTPRequestHandler):
+class _Base(BaseHTTPRequestHandler):
     server_version = "x402-release-gate/1.0"
 
     def _json(self, code, obj):
@@ -288,9 +311,16 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError):
             return None
 
+    def log_message(self, fmt, *args):  # quiet default access log
+        pass
+
+
+class SubmitHandler(_Base):
+    """Sandbox-facing: submit an intent, read status, health. NO /approve."""
+
     def do_GET(self):
         if self.path == "/healthz":
-            self._json(200, {"status": "ok", "role": "release-gate"})
+            self._json(200, {"status": "ok", "role": "submit"})
             return
         m = re.match(r"^/v1/intents/([0-9a-f-]+)$", self.path)
         if m and m.group(1) in INTENTS:
@@ -299,78 +329,95 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path == "/v1/intents":
-            intent, err = validate_intent(self._read_body())
-            if err:
-                self._json(400, {"error": err})
-                return
-            # Atomically reserve a slot BEFORE the (slow) forecast so the store
-            # cannot exceed its cap under concurrent submits; the placeholder
-            # counts toward the cap while we score.
-            record = new_record(intent, "processing", {})
-            if not reserve_slot(INTENTS, MAX_INTENTS, record):
-                self._json(429, {"error": "intent store full (%d); tear down "
-                                          "or raise RELEASE_GATE_MAX_INTENTS"
-                                          % MAX_INTENTS})
-                return
-            status, detail = process_intent(
-                intent, forecast, simulate_signature, settle)
-            record["status"] = status
-            record["detail"] = detail
-            sys.stdout.write("release-gate: %s %s %s -> %s\n" % (
-                record["id"][:8], intent["amount"], intent["counterparty"],
-                status))
-            sys.stdout.flush()
-            self._json(201, record)
+        if self.path != "/v1/intents":
+            # /approve is intentionally NOT served here (host-only listener).
+            self._json(404, {"error": "not found"})
             return
-        m = re.match(r"^/v1/intents/([0-9a-f-]+)/approve$", self.path)
-        if m:
-            record = INTENTS.get(m.group(1))
-            if record is None:
-                self._json(404, {"error": "not found"})
-                return
-            code, err = approve_record(
-                record, self.headers.get("X-Operator"),
-                self.headers.get("X-Approve-Token"), APPROVE_TOKEN)
-            if code:
-                self._json(code, {"error": err})
-                return
-            # The record is now claimed (status 'releasing'). Re-screen with a
-            # FRESH verdict: a named human overrides a HOLD, but a fresh STOP
-            # (e.g. the payee became sanctioned since submit) refuses the
-            # release even so. Re-forecast precedes signing -> still
-            # pre-signature.
-            operator = self.headers.get("X-Operator")
-            status, detail = process_approval(
-                record, forecast, simulate_signature, settle, operator)
-            code_map = {"released": 200, "refused": 200, "held": 409,
-                        "error": 502}
-            sys.stdout.write("release-gate: %s approve by %s -> %s\n"
-                             % (record["id"][:8], operator, status))
-            sys.stdout.flush()
-            if status in ("released", "refused"):
-                self._json(200, record)
-            else:
-                self._json(code_map[status], {"status": status, **detail})
+        intent, err = validate_intent(self._read_body())
+        if err:
+            self._json(400, {"error": err})
+            return
+        # Atomically reserve a slot BEFORE the (slow) forecast so the store
+        # cannot exceed its cap under concurrent submits.
+        record = new_record(intent, "processing", {})
+        if not reserve_slot(INTENTS, MAX_INTENTS, record):
+            self._json(429, {"error": "intent store full (%d); tear down or "
+                                      "raise RELEASE_GATE_MAX_INTENTS"
+                                      % MAX_INTENTS})
+            return
+        status, detail = process_intent(
+            intent, forecast, simulate_signature, settle)
+        record["status"] = status
+        record["detail"] = detail
+        sys.stdout.write("release-gate: %s %s %s -> %s\n" % (
+            record["id"][:8], intent["amount"], intent["counterparty"], status))
+        sys.stdout.flush()
+        self._json(201, record)
+
+
+class ApproveHandler(_Base):
+    """Host-only (127.0.0.1): a named human releases a HELD intent. The
+    sandbox has no route here."""
+
+    def do_GET(self):
+        if self.path == "/healthz":
+            self._json(200, {"status": "ok", "role": "approve"})
             return
         self._json(404, {"error": "not found"})
 
-    def log_message(self, fmt, *args):  # quiet default access log
-        pass
+    def do_POST(self):
+        m = re.match(r"^/v1/intents/([0-9a-f-]+)/approve$", self.path)
+        if not m:
+            self._json(404, {"error": "not found"})
+            return
+        record = INTENTS.get(m.group(1))
+        if record is None:
+            self._json(404, {"error": "not found"})
+            return
+        code, err = approve_record(
+            record, self.headers.get("X-Operator"),
+            self.headers.get("X-Approve-Token"), APPROVE_TOKEN)
+        if code:
+            self._json(code, {"error": err})
+            return
+        # Claimed (status 'releasing'). Re-screen with a FRESH verdict: a named
+        # human overrides a HOLD, but a fresh STOP refuses even so. Re-forecast
+        # precedes signing -> still pre-signature.
+        operator = self.headers.get("X-Operator")
+        status, detail = process_approval(
+            record, forecast, simulate_signature, settle, operator)
+        code_map = {"released": 200, "refused": 200, "held": 409, "error": 502}
+        sys.stdout.write("release-gate: %s approve by %s -> %s\n"
+                         % (record["id"][:8], operator, status))
+        sys.stdout.flush()
+        if status in ("released", "refused"):
+            self._json(200, record)
+        else:
+            self._json(code_map[status], {"status": status, **detail})
 
 
 def main():
-    bind = resolve_gate_bind(None)
-    server = ThreadingHTTPServer((bind, GATE_PORT), Handler)
+    submit_bind = resolve_gate_bind(None)
+    submit = ThreadingHTTPServer((submit_bind, GATE_PORT), SubmitHandler)
+    approve = ThreadingHTTPServer(("127.0.0.1", APPROVE_PORT), ApproveHandler)
     sys.stdout.write(
-        "release-gate: listening on %s:%d (verdicts: %s, rail: %s)\n"
-        % (bind, GATE_PORT, BLACKWALL_URL, RAIL_URL))
+        "release-gate: SUBMIT/status on %s:%d (sandbox-facing) | APPROVE on "
+        "127.0.0.1:%d (host-only)\n"
+        % (submit_bind, GATE_PORT, APPROVE_PORT))
+    if submit_bind == "0.0.0.0":  # never our default; warn if forced
+        sys.stdout.write(
+            "release-gate: WARNING RELEASE_GATE_BIND=0.0.0.0 exposes submission "
+            "on every host interface; prefer the specific host-internal bridge.\n")
+    sys.stdout.write(
+        "release-gate: verdicts %s | rail %s\n" % (BLACKWALL_URL, RAIL_URL))
     sys.stdout.write(
         "release-gate: HOLD-approval token (host-side only, pass as "
-        "X-Approve-Token): %s\n" % APPROVE_TOKEN)
+        "X-Approve-Token to 127.0.0.1:%d): %s\n" % (APPROVE_PORT, APPROVE_TOKEN))
     sys.stdout.flush()
+    t = threading.Thread(target=submit.serve_forever, daemon=True)
+    t.start()
     try:
-        server.serve_forever()
+        approve.serve_forever()
     except KeyboardInterrupt:
         pass
 

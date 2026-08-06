@@ -6,6 +6,14 @@
 """Tests for the host-side release gate (release_gate.py). Stdlib only, no
 network: the forecast/sign/settle seams are injected.
 
+The release contract has exactly TWO authorization paths, and these tests pin
+each one separately (same rule as the README and the module docstring):
+  * Automated release  -> ProcessIntent: settles unattended ONLY on a fresh
+    GO; HOLD/STOP/failure never settle here.
+  * Human-approved release -> ReviewRound2 (B3) + AuditRegressions (A1/A2):
+    a HELD intent needs a named human + host-side token AND a fresh re-screen;
+    a fresh STOP still refuses. A STOP is terminal on both paths.
+
 MUTATION NOTES per class: each names the invariant that block pins, so a
 surviving mutant points at the exact contract broken.
 """
@@ -322,15 +330,67 @@ class ReviewRound2(unittest.TestCase):
         return intent
 
     # B1 -------------------------------------------------------------
-    def test_b1_gate_bind_reachable_rail_loopback(self):
+    def test_b1_submit_bind_defaults_safe_never_promiscuous(self):
         from release_gate import resolve_gate_bind, RAIL_URL
-        # default gate bind is NOT host loopback (sandbox must reach it)
-        self.assertNotEqual(resolve_gate_bind(None), "127.0.0.1")
-        # explicit override honored
-        self.assertEqual(resolve_gate_bind("127.0.0.1"), "127.0.0.1")
-        self.assertEqual(resolve_gate_bind("0.0.0.0"), "0.0.0.0")
-        # the rail stays loopback (host-only; the denied edge)
+        # SAFE default: host loopback, and NEVER 0.0.0.0 (which would expose
+        # submission on every host interface). Reachability from the sandbox is
+        # an explicit opt-in (operator sets the specific bridge interface).
+        self.assertEqual(resolve_gate_bind(None), "127.0.0.1")
+        self.assertNotEqual(resolve_gate_bind(None), "0.0.0.0")
+        self.assertEqual(resolve_gate_bind("10.0.2.2"), "10.0.2.2")  # honored
         self.assertTrue(RAIL_URL.startswith("http://127.0.0.1"))
+
+    def test_b1_listeners_are_split_approval_host_only(self):
+        # The maker (submit) and human (approve) surfaces are DIFFERENT
+        # listeners: submit never serves /approve, approve never serves
+        # /v1/intents, and approve is bound to host loopback.
+        import http.client
+        import json
+        import threading
+        from http.server import ThreadingHTTPServer
+        import release_gate as rg
+
+        # Route-only test: inject fast fakes so a submit never makes a live
+        # forecast/settle call, and restore module state afterward.
+        saved = (dict(rg.INTENTS), rg.APPROVE_TOKEN, rg.forecast, rg.settle)
+        rg.INTENTS.clear()
+        rg.APPROVE_TOKEN = "tok"
+        rg.forecast = lambda intent: {"verdict": "HOLD"}
+        rg.settle = lambda intent, sig: {"tx": "x"}
+        submit = ThreadingHTTPServer(("127.0.0.1", 0), rg.SubmitHandler)
+        approve = ThreadingHTTPServer(("127.0.0.1", 0), rg.ApproveHandler)
+        for s in (submit, approve):
+            threading.Thread(target=s.serve_forever, daemon=True).start()
+        sp = submit.server_address[1]
+        ap = approve.server_address[1]
+
+        def req(port, method, path, body=None, headers=None):
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            c.request(method, path,
+                      body=json.dumps(body) if body is not None else None,
+                      headers=headers or {})
+            r = c.getresponse(); r.read(); c.close()
+            return r.status
+        try:
+            # submit listener serves submit, NOT approve
+            self.assertEqual(req(sp, "POST", "/v1/intents",
+                                 {"counterparty": PAYEE, "amount": "0.014"},
+                                 {"Content-Type": "application/json"}), 201)
+            self.assertEqual(
+                req(sp, "POST", "/v1/intents/anything/approve",
+                    {}, {"X-Operator": "x", "X-Approve-Token": "tok"}), 404)
+            # approve listener serves approve, NOT submit
+            self.assertEqual(
+                req(ap, "POST", "/v1/intents",
+                    {"counterparty": PAYEE, "amount": "0.014"},
+                    {"Content-Type": "application/json"}), 404)
+            # approve is bound to host loopback
+            self.assertEqual(approve.server_address[0], "127.0.0.1")
+        finally:
+            submit.shutdown(); approve.shutdown()
+            submit.server_close(); approve.server_close()
+            rg.INTENTS.clear(); rg.INTENTS.update(saved[0])
+            rg.APPROVE_TOKEN, rg.forecast, rg.settle = saved[1], saved[2], saved[3]
 
     # B3 -------------------------------------------------------------
     def test_b3_approval_reforecasts_fresh_stop_refuses_human(self):

@@ -126,12 +126,23 @@ fi
 echo
 if [ "$FAIL" -ne 0 ]; then
   echo "verify: FAILURES above"
-elif [ "$SANDBOX_EDGE_TESTED" -eq 1 ]; then
-  echo "verify: OK (host boundary + in-sandbox maker/denied-edge exercised)"
-else
-  # Never let a skipped security-critical stage read as a full pass.
-  echo "verify: PARTIAL — host boundary OK, but the in-sandbox maker/denied-edge"
-  echo "        was NOT exercised (see stage 3). Re-run on the host with openshell"
-  echo "        for the full check."
+  exit 1
 fi
-exit "$FAIL"
+if [ "$SANDBOX_EDGE_TESTED" -eq 1 ]; then
+  echo "verify: OK (host boundary + in-sandbox maker/denied-edge exercised)"
+  exit 0
+fi
+# Stage 3 (the denied rail edge -- the central security property) was NOT
+# exercised. The DEFAULT full verification must fail in that case, so a skip
+# can never read as success to CI. A host-only run is an explicit opt-in with
+# a distinct result.
+if [ "${VERIFY_HOST_ONLY:-0}" = "1" ]; then
+  echo "verify: HOST-ONLY OK (explicit VERIFY_HOST_ONLY=1) — host boundary"
+  echo "        exercised; the in-sandbox maker/denied-edge was NOT tested."
+  exit 0
+fi
+echo "verify: FAIL — the in-sandbox maker path + denied rail edge (the central"
+echo "        security property) was NOT exercised (see stage 3). Run on the"
+echo "        host with openshell, or set VERIFY_HOST_ONLY=1 to accept a"
+echo "        host-only run explicitly."
+exit 1

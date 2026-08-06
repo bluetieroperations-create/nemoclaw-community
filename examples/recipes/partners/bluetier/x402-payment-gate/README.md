@@ -70,14 +70,19 @@ flowchart LR
 
 The denied edge is the central security property: the rail route is absent
 from `policy.yaml`, so a prompt cannot override it. Note the deliberate bind
-asymmetry — the **gate** binds a host interface the sandbox can reach (via the
-`host.openshell.internal` route; `RELEASE_GATE_BIND`, default `0.0.0.0`),
-because the agent must be able to *submit* intents; the **rail** binds
-`127.0.0.1` (host loopback) and is unreachable from the sandbox at the network
-layer. The gate exposes only the least-privileged operation (submit); the
-sensitive operation (settle) lives behind loopback. Everything in-sandbox is
-**advisory** — the skill's pre-check warns the user early, but nothing the
-agent does or skips changes what the gate enforces.
+asymmetry. The gate runs **two listeners**: a **submit/status** listener the
+sandbox reaches (via the `host.openshell.internal` route) and a **host-only
+approve** listener bound to `127.0.0.1:8791`. The submit listener defaults to
+`127.0.0.1` too (`RELEASE_GATE_BIND`, **safe by default — never `0.0.0.0`**);
+to let the sandbox reach it the operator sets `RELEASE_GATE_BIND` to the
+*specific* host-internal bridge interface behind `host.openshell.internal`, not
+a promiscuous bind. The **rail** binds `127.0.0.1` and is unreachable from the
+sandbox at the network layer — that asymmetry *is* the denied edge. Splitting
+the listeners means exposing the submit interface never exposes `/approve`: the
+sandbox can reach only the least-privileged operation (submit), while the
+human-only operations (approve, settle) live behind loopback. Everything
+in-sandbox is **advisory** — the skill's pre-check warns the user early, but
+nothing the agent does or skips changes what the gate enforces.
 
 ## Key invariants
 
@@ -88,15 +93,22 @@ agent does or skips changes what the gate enforces.
 - The sandbox has no route to the rail or any facilitator, even when a tool
   or prompt attempts one. Its egress is the inference endpoints, the verdict
   service, and the intent-submission route — nothing else.
-- Only the host-side gate settles, only after a fresh GO verdict; verdict →
-  sign → settle ordering is enforced by code and pinned by unit test.
-- A HOLD requires a **named human** plus the approval token printed only to
-  the gate's host-side log — a value the sandbox cannot read; the release
-  transition is lock-guarded against concurrent double-approval. **Approval
-  re-screens with a fresh verdict**: a named human overrides a HOLD, but a
-  fresh STOP (e.g. the payee became sanctioned between submit and approval)
-  refuses the release even so — and the re-forecast precedes signing, so the
-  decision stays pre-signature. A STOP is terminal.
+- **Only the host-side gate settles, and it does so through exactly two
+  authorization paths — never any other way.** Both run host-side and both
+  decide before any signature exists (verdict → sign → settle, enforced by
+  code and pinned by unit test):
+  1. **Automated release** — an intent settles unattended *only* on a fresh
+     **GO** verdict. HOLD and STOP never settle on this path.
+  2. **Human-approved release** — a **HELD** intent (a fresh HOLD, or a
+     verdict-service failure that held it) can be released by a **named human**
+     plus the approval token printed only to the gate's host-side log — a value
+     the sandbox cannot read; the held→releasing transition is lock-guarded
+     against concurrent double-approval. This path **re-screens with a fresh
+     verdict**: the named human overrides a HOLD, but a fresh **STOP** (e.g. the
+     payee became sanctioned between submit and approval) refuses the release
+     even with a valid operator and token — the re-forecast precedes signing, so
+     the decision stays pre-signature.
+  A STOP is terminal on both paths: no verdict, human, or token releases it.
 - A verdict-service failure HOLDS — the mandatory layer never fails open.
 - Only the payment claim (`counterparty, amount, asset, chain, resource`)
   leaves the sandbox or the host — never tool payloads, never keys.
@@ -144,10 +156,11 @@ from pre-existing logs:
 
 A held intent can then be released only by a named human holding the
 approval token that the gate prints to its host-side log at startup — a
-value nothing inside the sandbox can read:
+value nothing inside the sandbox can read. The approve endpoint lives on the
+**host-only** listener (`127.0.0.1:8791`), which the sandbox has no route to:
 
 ```bash
-curl -X POST localhost:8790/v1/intents/<id>/approve \
+curl -X POST 127.0.0.1:8791/v1/intents/<id>/approve \
   -H 'X-Operator: <your name>' -H "X-Approve-Token: <from .run/gate.log>"
 ```
 
