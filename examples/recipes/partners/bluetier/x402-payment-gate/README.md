@@ -84,8 +84,10 @@ agent does or skips changes what the gate enforces.
   service, and the intent-submission route — nothing else.
 - Only the host-side gate settles, only after a fresh GO verdict; verdict →
   sign → settle ordering is enforced by code and pinned by unit test.
-- A HOLD requires a **named human** (`X-Operator` header) to release; a STOP
-  is terminal and cannot be approved by anyone.
+- A HOLD requires a **named human** plus the approval token printed only to
+  the gate's host-side log — a value the sandbox cannot read; the release
+  transition is lock-guarded against concurrent double-approval. A STOP is
+  terminal and cannot be approved by anyone.
 - A verdict-service failure HOLDS — the mandatory layer never fails open.
 - Only the payment claim (`counterparty, amount, asset, chain, resource`)
   leaves the sandbox or the host — never tool payloads, never keys.
@@ -131,8 +133,19 @@ from pre-existing logs:
 3. From inside the sandbox: the intent route must work and the rail route
    must be denied by the supervisor.
 
-A held intent can then be released by a named human:
-`curl -X POST localhost:8790/v1/intents/<id>/approve -H 'X-Operator: <name>'`.
+A held intent can then be released only by a named human holding the
+approval token that the gate prints to its host-side log at startup — a
+value nothing inside the sandbox can read:
+
+```bash
+curl -X POST localhost:8790/v1/intents/<id>/approve \
+  -H 'X-Operator: <your name>' -H "X-Approve-Token: <from .run/gate.log>"
+```
+
+The held→releasing→released transition is lock-guarded, so two concurrent
+approvals can never both settle, and intent submission is bounded
+(`RELEASE_GATE_MAX_INTENTS`, default 1000) so a compromised agent cannot grow
+the store or hammer the verdict service without limit.
 
 ## Files
 
