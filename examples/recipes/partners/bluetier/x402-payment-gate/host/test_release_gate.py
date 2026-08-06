@@ -173,3 +173,127 @@ class SimulatedSignature(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuditRegressions(unittest.TestCase):
+    """Session audit of the initial gate implementation.
+
+    MUTATION NOTES: A1 pins the double-release race (two concurrent approvals
+    of one HELD intent must yield exactly one settlement); A2 pins the
+    approval token (a named header alone must never release — the token is
+    printed host-side only, where the sandbox cannot read); A3 pins the
+    intent-store cap; A4 pins input size bounds.
+    """
+
+    def _held_record(self):
+        from release_gate import new_record
+        intent, err = validate_intent(
+            {"counterparty": PAYEE, "amount": "0.014"})
+        self.assertIsNone(err)
+        return new_record(intent, "held", {"verdict": verdict("HOLD")})
+
+    def test_a1_second_approval_of_same_intent_is_rejected(self):
+        from release_gate import approve_record, finalize_release
+        record = self._held_record()
+        code, _ = approve_record(record, "samuel", "tok", "tok")
+        self.assertEqual(code, 0)                # first approval proceeds
+        self.assertEqual(record["status"], "releasing")
+        code2, err2 = approve_record(record, "mallory", "tok", "tok")
+        self.assertEqual(code2, 409)             # concurrent second: rejected
+        finalize_release(record, {"settled": True, "tx": "sim_a"}, "samuel")
+        self.assertEqual(record["status"], "released")
+        code3, _ = approve_record(record, "mallory", "tok", "tok")
+        self.assertEqual(code3, 409)             # after release: rejected
+
+    def test_a2_approval_requires_the_host_side_token(self):
+        from release_gate import approve_record
+        record = self._held_record()
+        code, _ = approve_record(record, "samuel", None, "tok")
+        self.assertEqual(code, 403)              # no token
+        code, _ = approve_record(record, "samuel", "wrong", "tok")
+        self.assertEqual(code, 403)              # wrong token
+        code, _ = approve_record(record, None, "tok", "tok")
+        self.assertEqual(code, 403)              # token but no named human
+        self.assertEqual(record["status"], "held")  # nothing changed state
+
+    def test_a3_intent_store_is_bounded(self):
+        from release_gate import store_has_room
+        self.assertTrue(store_has_room({}, 2))
+        self.assertTrue(store_has_room({"a": 1}, 2))
+        self.assertFalse(store_has_room({"a": 1, "b": 2}, 2))
+
+    def test_a4_oversized_fields_are_rejected(self):
+        big_amount = "9" * 60
+        intent, err = validate_intent(
+            {"counterparty": PAYEE, "amount": big_amount})
+        self.assertIsNone(intent)
+        intent, err = validate_intent(
+            {"counterparty": PAYEE, "amount": "1",
+             "resource": "https://x/" + "a" * 3000})
+        self.assertIsNone(intent)
+        # sane values still pass
+        intent, err = validate_intent(
+            {"counterparty": PAYEE, "amount": "1",
+             "resource": "https://api.example.com/v1/data"})
+        self.assertIsNone(err)
+
+
+class ConcurrencyGuard(unittest.TestCase):
+    """Deterministic proof of the double-release lock (A1).
+
+    A single-threaded test cannot catch a missing lock (check-then-act still
+    passes sequentially), and an HTTP-level race test cannot catch it either
+    (CPython's GIL makes the tiny window near-impossible to interleave). So we
+    force the interleave in-process: a record whose status-read inside the
+    critical section pauses thread A, during which thread B attempts its own
+    approval. With the lock, B blocks on acquire and later sees 'releasing'
+    (409); without it, B reads 'held' and also releases (two 0s -> caught).
+    """
+
+    def test_a1_lock_serializes_concurrent_approvals(self):
+        import threading
+        import time
+        from release_gate import approve_record
+
+        base = self._held_record()
+        a_in_section = threading.Event()
+        release_a = threading.Event()
+
+        class CoordDict(dict):
+            first = True
+
+            def __getitem__(self, key):
+                val = dict.__getitem__(self, key)
+                if key == "status" and self.first \
+                        and threading.current_thread().name == "A":
+                    self.first = False
+                    a_in_section.set()      # A has read status; let B start
+                    release_a.wait(3)       # pause A between check and set
+                return val
+
+        record = CoordDict(base)
+        results = {}
+
+        def call(name):
+            results[name] = approve_record(record, name, "tok", "tok")[0]
+
+        a = threading.Thread(target=call, args=("A",), name="A")
+        b = threading.Thread(target=call, args=("B",), name="B")
+        a.start()
+        self.assertTrue(a_in_section.wait(3), "A never entered its section")
+        b.start()
+        time.sleep(0.2)          # B blocks on the lock (fixed) or completes (mutant)
+        release_a.set()          # resume A
+        a.join(3)
+        b.join(3)
+
+        releases = [k for k, v in results.items() if v == 0]
+        self.assertEqual(len(releases), 1,
+                         "exactly one approval may release; got %s" % results)
+
+    def _held_record(self):
+        from release_gate import new_record
+        intent, err = validate_intent(
+            {"counterparty": PAYEE, "amount": "0.014"})
+        self.assertIsNone(err)
+        return new_record(intent, "held", {"verdict": verdict("HOLD")})
