@@ -42,7 +42,7 @@ could choose to break.
 
 4. Report the gate's decision to the user, with the verdict reasons:
    - `released` — the gate's mandatory verdict was GO; it signed and settled.
-   - `held` — escalated. A named human operator can approve it host-side;
+   - `held` — escalated. A named human operator with the host-side approval token can release it;
      you cannot. Give the user the intent `id` and the reasons.
    - `refused` — a hard signal fired (e.g. sanctions). Do not resubmit;
      explain which reason caused it.

@@ -38,7 +38,9 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import sys
+import threading
 import urllib.error
 import urllib.request
 import uuid
@@ -77,9 +79,9 @@ def validate_intent(payload):
     amount = payload.get("amount")
     if isinstance(amount, (int, float)):
         amount = str(amount)
-    if not isinstance(amount, str) or not _AMOUNT.match(amount.strip()) \
-            or float(amount) <= 0:
-        return None, "amount must be a positive plain-decimal string"
+    if not isinstance(amount, str) or len(amount) > 40 \
+            or not _AMOUNT.match(amount.strip()) or float(amount) <= 0:
+        return None, "amount must be a positive plain-decimal string (max 40 chars)"
     intent = {
         "counterparty": counterparty.strip().lower(),
         "amount": amount.strip(),
@@ -87,7 +89,10 @@ def validate_intent(payload):
         "chain": payload.get("chain") or "base",
     }
     if payload.get("resource"):
-        intent["resource"] = str(payload["resource"])
+        resource = str(payload["resource"])
+        if len(resource) > 2048:
+            return None, "resource must be at most 2048 characters"
+        intent["resource"] = resource
     return intent, None
 
 
@@ -136,6 +141,56 @@ def process_intent(intent, forecast_fn, sign_fn, settle_fn):
         return "error", {"error": "settlement failed: %s" % e,
                          "verdict": verdict_obj}
     return "released", {"verdict": verdict_obj, "settlement": settlement}
+
+
+MAX_INTENTS = int(os.environ.get("RELEASE_GATE_MAX_INTENTS", "1000"))
+
+# The approval token is the "something the sandbox cannot have": generated at
+# startup (or via RELEASE_GATE_APPROVE_TOKEN) and printed ONLY to the gate's
+# host-side stdout. A named operator copies it from the host log. Even if the
+# sandbox policy were ever broadened to expose the approve route, a prompt
+# cannot mint this value.
+APPROVE_TOKEN = os.environ.get("RELEASE_GATE_APPROVE_TOKEN") \
+    or secrets.token_hex(16)
+
+_LOCK = threading.Lock()
+
+
+def store_has_room(store, cap):
+    """Bounded intent store: a sandboxed spammer cannot grow memory without
+    limit (each submission also costs a live forecast, so the cap bounds
+    that too)."""
+    return len(store) < cap
+
+
+def new_record(intent, status, detail):
+    return {"id": str(uuid.uuid4()), "status": status,
+            "intent": intent, "detail": detail}
+
+
+def approve_record(record, operator, token, expected_token):
+    """Atomically claim a HELD record for release. Returns (0, None) when the
+    caller may proceed to settle (record is now 'releasing'), else
+    (http_code, error). Named human + host-side token are BOTH required, and
+    the held->releasing transition happens under a lock so two concurrent
+    approvals can never both settle (the double-release race)."""
+    if not operator or not token or expected_token is None \
+            or not secrets.compare_digest(str(token), str(expected_token)):
+        return 403, ("a named human (X-Operator) AND the approval token "
+                     "printed in the gate's host log (X-Approve-Token) are "
+                     "required")
+    with _LOCK:
+        if record["status"] != "held":
+            return 409, ("only HELD intents can be approved (status: %s)"
+                         % record["status"])
+        record["status"] = "releasing"
+    return 0, None
+
+
+def finalize_release(record, settlement, operator):
+    record["status"] = "released"
+    record["detail"]["settlement"] = settlement
+    record["detail"]["approved_by"] = operator
 
 
 # ---------------------------------------------------------------------------
@@ -199,14 +254,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/v1/intents":
+            if not store_has_room(INTENTS, MAX_INTENTS):
+                self._json(429, {"error": "intent store full (%d); tear down "
+                                          "or raise RELEASE_GATE_MAX_INTENTS"
+                                          % MAX_INTENTS})
+                return
             intent, err = validate_intent(self._read_body())
             if err:
                 self._json(400, {"error": err})
                 return
             status, detail = process_intent(
                 intent, forecast, simulate_signature, settle)
-            record = {"id": str(uuid.uuid4()), "status": status,
-                      "intent": intent, "detail": detail}
+            record = new_record(intent, status, detail)
             INTENTS[record["id"]] = record
             sys.stdout.write("release-gate: %s %s %s -> %s\n" % (
                 record["id"][:8], intent["amount"], intent["counterparty"],
@@ -217,29 +276,26 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/v1/intents/([0-9a-f-]+)/approve$", self.path)
         if m:
             record = INTENTS.get(m.group(1))
-            operator = self.headers.get("X-Operator")
             if record is None:
                 self._json(404, {"error": "not found"})
                 return
-            if not operator:
-                self._json(403, {"error": "X-Operator header (a named human) "
-                                          "is required to approve"})
-                return
-            if record["status"] != "held":
-                self._json(409, {"error": "only HELD intents can be approved "
-                                          "(status: %s)" % record["status"]})
+            code, err = approve_record(
+                record, self.headers.get("X-Operator"),
+                self.headers.get("X-Approve-Token"), APPROVE_TOKEN)
+            if code:
+                self._json(code, {"error": err})
                 return
             # Named-human override of a HOLD: sign-then-settle now. STOPs can
             # never reach here (status "refused" is terminal).
+            operator = self.headers.get("X-Operator")
             signature = simulate_signature(record["intent"])
             try:
                 settlement = settle(record["intent"], signature)
             except Exception as e:  # noqa: BLE001
+                record["status"] = "held"  # release the claim; retryable
                 self._json(502, {"error": "settlement failed: %s" % e})
                 return
-            record["status"] = "released"
-            record["detail"]["settlement"] = settlement
-            record["detail"]["approved_by"] = operator
+            finalize_release(record, settlement, operator)
             sys.stdout.write("release-gate: %s HOLD approved by %s\n"
                              % (record["id"][:8], operator))
             sys.stdout.flush()
@@ -256,6 +312,9 @@ def main():
     sys.stdout.write(
         "release-gate: listening on 127.0.0.1:%d (verdicts: %s, rail: %s)\n"
         % (GATE_PORT, BLACKWALL_URL, RAIL_URL))
+    sys.stdout.write(
+        "release-gate: HOLD-approval token (host-side only, pass as "
+        "X-Approve-Token): %s\n" % APPROVE_TOKEN)
     sys.stdout.flush()
     try:
         server.serve_forever()
