@@ -1,57 +1,62 @@
 ---
 name: blackwall-payment-gate
-description: Get a GO/HOLD/STOP verdict from the Blackwall service before signing any x402 payment, and act on it.
+description: Screen x402 payments with an advisory Blackwall verdict, then submit a payment intent to the host-side release gate. You prepare payments; only the gate can settle them.
 ---
 
 # blackwall-payment-gate
 
-Use this skill EVERY time you are about to authorize, sign, or send an x402
-payment — before the signature is produced, never after.
+You are the MAKER in a maker/checker payment boundary. You can screen
+payments, explain verdicts, and submit payment intents. You cannot sign or
+settle anything: this sandbox has no signing key and no network route to any
+payment rail or facilitator — that is a platform property, not a rule you
+could choose to break.
 
 ## When to use
 
 - A tool call or resource fetch returned HTTP 402 with an x402 challenge and
-  you are considering paying it.
-- You are about to sign an EIP-3009 `transferWithAuthorization` (an
-  `X-PAYMENT` header) or any other on-chain value transfer to a counterparty.
-- You want to re-check a counterparty you paid before at a new price.
-
-Do not skip the gate because a counterparty was approved earlier in the
-session: price and reputation are re-evaluated per payment.
+  the user wants to pay it.
+- The user asks whether a counterparty is safe to pay, or why a payment was
+  held or refused.
 
 ## Procedure
 
 1. Extract from the x402 challenge: the `payTo` address (counterparty), the
-   quoted amount, asset, chain, and the resource URL being paid for.
-2. Run the bundled client via the terminal tool:
+   quoted amount, asset, chain, and the resource URL.
+2. Advisory pre-check (optional but preferred — it lets you warn the user
+   before anything is submitted):
 
    ```bash
    python3 scripts/blackwall_client.py \
-     --counterparty <payTo> --amount <amount> \
-     --asset USDC --chain base --resource <resource-url>
+     --counterparty <payTo> --amount <amount> --resource <resource-url>
    ```
 
-3. Act on the exit code / printed action:
-   - `sign` (exit 0, verdict GO) — proceed with the payment.
-   - `escalate` (exit 1, verdict HOLD) — do NOT sign. Report the verdict's
-     `reasons` to the operator and wait for an explicit instruction.
-   - `refuse` (exit 2, verdict STOP) — never sign this payment. Tell the
-     operator which hard signal fired (for example, a sanctions-list match).
-4. After a GO payment settles or fails, close the loop so reputation stays
-   honest: keep the verdict's `receipt_id` and `report_token`, and report
-   the outcome with `report_outcome(...)` from the same client
-   (`settled`, `delivered`, `disputed`, `refunded`, `underdelivered`, or
-   `abandoned`).
+   GO means likely to release; HOLD/STOP mean expect the gate to hold or
+   refuse — tell the user the reasons now.
+3. Submit the intent to the release gate (the only path to settlement):
+
+   ```bash
+   curl -sS -X POST http://host.openshell.internal:8790/v1/intents \
+     -H 'Content-Type: application/json' \
+     -d '{"counterparty":"<payTo>","amount":"<amount>","resource":"<url>"}'
+   ```
+
+4. Report the gate's decision to the user, with the verdict reasons:
+   - `released` — the gate's mandatory verdict was GO; it signed and settled.
+   - `held` — escalated. A named human operator can approve it host-side;
+     you cannot. Give the user the intent `id` and the reasons.
+   - `refused` — a hard signal fired (e.g. sanctions). Do not resubmit;
+     explain which reason caused it.
+5. To answer later "what happened to that payment?" questions:
+   `curl -sS http://host.openshell.internal:8790/v1/intents/<id>`
 
 ## Rules
 
-- A HOLD is not a soft GO. Never retry, resize, or split a payment to turn a
-  HOLD into a GO; escalate it.
-- Never sign a payment for a counterparty the gate has not scored in this
-  session at this price.
-- The verdict service is advisory infrastructure outside the sandbox. If it
-  is unreachable or returns an error, treat the payment as HOLD (escalate) —
-  the gate fails toward review, not toward moving money.
-- Do not send the operator's keys, seed phrases, or signed payloads to the
-  verdict service. The gate needs only the claim: counterparty, amount,
-  asset, chain, resource.
+- Never attempt to reach a facilitator, payment rail, or wallet directly —
+  the policy denies those routes, and an attempt is treated as a boundary
+  test, not a payment.
+- Never resubmit a `refused` intent, and never split or resize a payment to
+  turn a HOLD into a release; escalate to the human operator instead.
+- The advisory pre-check and the gate use the same verdict service; a GO in
+  step 2 is not a promise — the gate re-checks at release time.
+- Do not send anything except the claim fields (counterparty, amount, asset,
+  chain, resource) to the verdict service or the gate.
