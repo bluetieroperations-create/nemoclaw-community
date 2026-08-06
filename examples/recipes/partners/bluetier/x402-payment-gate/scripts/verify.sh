@@ -71,19 +71,38 @@ else
 fi
 
 echo
-echo "== 3/3 denied edge (in-sandbox; needs openshell + SANDBOX_NAME) =="
+echo "== 3/3 in-sandbox maker path + denied edge (needs openshell + SANDBOX_NAME) =="
 if [ -z "${SANDBOX_NAME:-}" ] || ! command -v openshell >/dev/null 2>&1; then
   echo "skipped: set SANDBOX_NAME and run where the openshell CLI is available."
-  echo "         Inside the sandbox, these two must hold:"
-  echo "           curl http://host.openshell.internal:8790/healthz   -> 200 (maker path)"
-  echo "           curl http://host.openshell.internal:8780/healthz   -> DENIED by policy"
+  echo "         Inside the sandbox, all three must hold:"
+  echo "           1. POST host.openshell.internal:8790/v1/intents -> a fresh verdict"
+  echo "           2. that intent id is retrievable via the gate on the host"
+  echo "           3. GET  host.openshell.internal:8780/healthz     -> DENIED by policy"
 else
-  if openshell sandbox exec --name "$SANDBOX_NAME" -- \
-       curl -sS -m 10 http://host.openshell.internal:8790/healthz >/dev/null 2>&1; then
-    echo "  PASS: sandbox can reach the release gate (maker path open)"
+  # 1. Fresh maker submission FROM INSIDE the sandbox, tagged uniquely to this
+  #    run so nothing stale can satisfy it. The agent's real path: submit an
+  #    intent over the scoped route and get back a current-run verdict.
+  TAG="verify-$$-$(od -An -N4 -tx1 /dev/urandom | tr -d ' ')"
+  SUBMIT=$(openshell sandbox exec --name "$SANDBOX_NAME" -- \
+    curl -sS -m 120 -X POST http://host.openshell.internal:8790/v1/intents \
+      -H 'Content-Type: application/json' \
+      -d "{\"counterparty\":\"$UNKNOWN\",\"amount\":\"0.014\",\"resource\":\"https://x/$TAG\"}" 2>/dev/null)
+  IID=$(printf '%s' "$SUBMIT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+  ISTATUS=$(printf '%s' "$SUBMIT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null)
+  if [ -n "$IID" ] && [ "$ISTATUS" = "held" ]; then
+    echo "  PASS: fresh in-sandbox intent $IID -> $ISTATUS (maker path works under policy)"
   else
-    echo "  FAIL: sandbox cannot reach the release gate"; FAIL=1
+    echo "  FAIL: in-sandbox submission did not yield a fresh verdict (got: $ISTATUS)"; FAIL=1
   fi
+  # 2. The verdict is real current-run state on the host gate, carrying THIS
+  #    run's unique tag (stale state cannot match).
+  if [ -n "$IID" ] && curl -sS -m 5 "$GATE/v1/intents/$IID" \
+       | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d['intent'].get('resource','').endswith('$TAG') else 1)" 2>/dev/null; then
+    echo "  PASS: intent $IID is current-run state on the host gate (tag $TAG)"
+  else
+    echo "  FAIL: submitted intent not found as current-run state on the gate"; FAIL=1
+  fi
+  # 3. The denied edge: the rail must be unreachable from the sandbox.
   if openshell sandbox exec --name "$SANDBOX_NAME" -- \
        curl -sS -m 10 http://host.openshell.internal:8780/healthz >/dev/null 2>&1; then
     echo "  FAIL: sandbox reached the RAIL — the denied edge is open!"; FAIL=1

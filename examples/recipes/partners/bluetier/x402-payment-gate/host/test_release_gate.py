@@ -16,8 +16,14 @@ from release_gate import (
     HOLD,
     REFUSE,
     RELEASE,
+    approve_record,
     decide_release,
+    finalize_release,
+    new_record,
+    process_approval,
     process_intent,
+    reserve_slot,
+    resolve_gate_bind,
     simulate_signature,
     validate_intent,
 )
@@ -171,9 +177,6 @@ class SimulatedSignature(unittest.TestCase):
         self.assertNotEqual(s1, simulate_signature(intent2))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class AuditRegressions(unittest.TestCase):
     """Session audit of the initial gate implementation.
@@ -186,14 +189,12 @@ class AuditRegressions(unittest.TestCase):
     """
 
     def _held_record(self):
-        from release_gate import new_record
         intent, err = validate_intent(
             {"counterparty": PAYEE, "amount": "0.014"})
         self.assertIsNone(err)
         return new_record(intent, "held", {"verdict": verdict("HOLD")})
 
     def test_a1_second_approval_of_same_intent_is_rejected(self):
-        from release_gate import approve_record, finalize_release
         record = self._held_record()
         code, _ = approve_record(record, "samuel", "tok", "tok")
         self.assertEqual(code, 0)                # first approval proceeds
@@ -217,10 +218,13 @@ class AuditRegressions(unittest.TestCase):
         self.assertEqual(record["status"], "held")  # nothing changed state
 
     def test_a3_intent_store_is_bounded(self):
-        from release_gate import store_has_room
-        self.assertTrue(store_has_room({}, 2))
-        self.assertTrue(store_has_room({"a": 1}, 2))
-        self.assertFalse(store_has_room({"a": 1, "b": 2}, 2))
+        # A3's capacity cap is now enforced atomically by reserve_slot
+        # (see ReviewRound2.test_b4_*); a full store rejects new reservations.
+        store = {"a": 1, "b": 2}
+        rec = new_record(validate_intent(
+            {"counterparty": PAYEE, "amount": "1"})[0], "processing", {})
+        self.assertFalse(reserve_slot(store, 2, rec))
+        self.assertTrue(reserve_slot({}, 2, rec))
 
     def test_a4_oversized_fields_are_rejected(self):
         big_amount = "9" * 60
@@ -253,7 +257,6 @@ class ConcurrencyGuard(unittest.TestCase):
     def test_a1_lock_serializes_concurrent_approvals(self):
         import threading
         import time
-        from release_gate import approve_record
 
         base = self._held_record()
         a_in_section = threading.Event()
@@ -292,8 +295,160 @@ class ConcurrencyGuard(unittest.TestCase):
                          "exactly one approval may release; got %s" % results)
 
     def _held_record(self):
-        from release_gate import new_record
         intent, err = validate_intent(
             {"counterparty": PAYEE, "amount": "0.014"})
         self.assertIsNone(err)
         return new_record(intent, "held", {"verdict": verdict("HOLD")})
+
+
+class ReviewRound2(unittest.TestCase):
+    """Second review round (PR #105, commit 54345d0).
+
+    MUTATION NOTES:
+      B1 gate must bind an address reachable from the sandbox (not host
+         loopback); the rail must stay loopback (the denied edge).
+      B2 covered by verify.sh stage 3 (in-sandbox fresh submission), not here.
+      B3 human approval RE-SCREENS: a fresh STOP refuses even a named human
+         with a valid token; GO/HOLD let the override stand. Signature never
+         appears on a refused path.
+      B4 slot reservation is atomic under the lock (check + insert together),
+         so the store cannot exceed its cap under concurrent submits.
+    """
+
+    def _intent(self):
+        intent, err = validate_intent(
+            {"counterparty": PAYEE, "amount": "0.014"})
+        self.assertIsNone(err)
+        return intent
+
+    # B1 -------------------------------------------------------------
+    def test_b1_gate_bind_reachable_rail_loopback(self):
+        from release_gate import resolve_gate_bind, RAIL_URL
+        # default gate bind is NOT host loopback (sandbox must reach it)
+        self.assertNotEqual(resolve_gate_bind(None), "127.0.0.1")
+        # explicit override honored
+        self.assertEqual(resolve_gate_bind("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(resolve_gate_bind("0.0.0.0"), "0.0.0.0")
+        # the rail stays loopback (host-only; the denied edge)
+        self.assertTrue(RAIL_URL.startswith("http://127.0.0.1"))
+
+    # B3 -------------------------------------------------------------
+    def test_b3_approval_reforecasts_fresh_stop_refuses_human(self):
+        from release_gate import approve_record, process_approval
+        record = new_record(self._intent(), "held", {"verdict": verdict("HOLD")})
+        code, _ = approve_record(record, "samuel", "tok", "tok")
+        self.assertEqual(code, 0)                 # authz + claim ok
+        calls = []
+        status, detail = process_approval(
+            record,
+            forecast_fn=lambda i: verdict("STOP"),          # became sanctioned
+            sign_fn=lambda i: calls.append("sign") or "sig",
+            settle_fn=lambda i, s: calls.append("settle") or {"tx": "x"},
+            operator="samuel")
+        self.assertEqual(status, "refused")
+        self.assertEqual(record["status"], "refused")
+        self.assertEqual(calls, [])               # never signed, never settled
+
+    def test_b3_approval_go_lets_override_stand(self):
+        from release_gate import approve_record, process_approval
+        record = new_record(self._intent(), "held", {"verdict": verdict("HOLD")})
+        approve_record(record, "samuel", "tok", "tok")
+        calls = []
+        status, detail = process_approval(
+            record, lambda i: verdict("GO"),
+            lambda i: calls.append("sign") or "sig",
+            lambda i, s: calls.append("settle") or {"tx": "x"}, "samuel")
+        self.assertEqual(status, "released")
+        self.assertEqual(calls, ["sign", "settle"])   # order preserved
+        self.assertEqual(record["detail"]["approved_by"], "samuel")
+
+    def test_b3_approval_hold_is_a_human_override(self):
+        from release_gate import approve_record, process_approval
+        record = new_record(self._intent(), "held", {"verdict": verdict("HOLD")})
+        approve_record(record, "samuel", "tok", "tok")
+        # a still-HOLD re-forecast: the named human's override stands
+        status, _ = process_approval(
+            record, lambda i: verdict("HOLD"),
+            lambda i: "sig", lambda i, s: {"tx": "x"}, "samuel")
+        self.assertEqual(status, "released")
+
+    def test_b3_reforecast_failure_returns_to_held(self):
+        from release_gate import approve_record, process_approval
+        record = new_record(self._intent(), "held", {"verdict": verdict("HOLD")})
+        approve_record(record, "samuel", "tok", "tok")
+
+        def broken(i):
+            raise OSError("verdict service down")
+        calls = []
+        status, _ = process_approval(
+            record, broken, lambda i: calls.append("s") or "sig",
+            lambda i, s: calls.append("t") or {}, "samuel")
+        self.assertEqual(status, "held")
+        self.assertEqual(record["status"], "held")   # claim released, retryable
+        self.assertEqual(calls, [])
+
+    # B4 -------------------------------------------------------------
+    def test_b4_reserve_slot_is_atomic_and_bounded(self):
+        from release_gate import reserve_slot
+        store = {}
+        r1 = new_record(self._intent(), "processing", {})
+        r2 = new_record(self._intent(), "processing", {})
+        r3 = new_record(self._intent(), "processing", {})
+        self.assertTrue(reserve_slot(store, 2, r1))
+        self.assertTrue(reserve_slot(store, 2, r2))
+        self.assertFalse(reserve_slot(store, 2, r3))   # at cap
+        self.assertEqual(len(store), 2)
+        self.assertIn(r1["id"], store)
+        self.assertNotIn(r3["id"], store)
+
+    def test_b4_reserve_slot_lock_prevents_overshoot(self):
+        # Deterministic: a store whose length-check inside reserve_slot pauses
+        # thread A between "is there room?" and the insert, during which thread
+        # B attempts its own reservation at cap-1. With the lock, B blocks on
+        # acquire and later sees the store full; without it, both insert and
+        # the store overshoots cap. (A single-threaded or barrier test cannot
+        # catch a missing lock here — CPython's GIL hides the window.)
+        import threading
+        import time
+
+        a_checked = threading.Event()
+        release_a = threading.Event()
+
+        class CoordStore(dict):
+            armed = True
+
+            def __len__(self):
+                n = dict.__len__(self)
+                if self.armed and threading.current_thread().name == "A":
+                    self.armed = False
+                    a_checked.set()       # A has read the length; let B start
+                    release_a.wait(3)     # pause A between check and insert
+                return n
+
+        store = CoordStore()
+        store["existing"] = 1             # cap 2, so exactly one slot free
+        cap = 2
+        results = {}
+
+        def call(name):
+            rec = new_record(self._intent(), "processing", {})
+            results[name] = reserve_slot(store, cap, rec)
+
+        a = threading.Thread(target=call, args=("A",), name="A")
+        b = threading.Thread(target=call, args=("B",), name="B")
+        a.start()
+        self.assertTrue(a_checked.wait(3), "A never entered reserve_slot")
+        b.start()
+        time.sleep(0.2)          # B blocks on the lock (fixed) or inserts (mutant)
+        release_a.set()
+        a.join(3)
+        b.join(3)
+
+        self.assertEqual(dict.__len__(store), cap,
+                         "store overshot cap: %d" % dict.__len__(store))
+        self.assertEqual(list(results.values()).count(True), 1,
+                         "exactly one reservation may succeed; got %s" % results)
+
+
+if __name__ == "__main__":
+    unittest.main()
