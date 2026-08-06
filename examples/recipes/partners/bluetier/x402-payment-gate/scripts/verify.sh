@@ -27,7 +27,12 @@ RAIL="http://127.0.0.1:8780"
 WARM="0x02c2fcafce36b4aadb39625866bc6b1699d83043"
 SANCTIONED="0x0330070fd38ec3bb94f58fa55d40368271e9e54a"
 UNKNOWN="0x0000000000000000000000000000000000000001"
+# Same default as bring-up.sh / tear-down.sh, so the plain `bring-up ->
+# verify` flow exercises stage 3 automatically instead of silently skipping
+# it. Override to target a differently-named sandbox.
+SANDBOX_NAME="${SANDBOX_NAME:-x402-gate-demo}"
 FAIL=0
+SANDBOX_EDGE_TESTED=0   # set to 1 only when stage 3 actually runs
 
 submit() { # submit <counterparty> <amount> -> prints "status tx" (tx empty unless released)
   curl -sS -m 120 -X POST "$GATE/v1/intents" -H 'Content-Type: application/json' \
@@ -71,14 +76,21 @@ else
 fi
 
 echo
-echo "== 3/3 in-sandbox maker path + denied edge (needs openshell + SANDBOX_NAME) =="
-if [ -z "${SANDBOX_NAME:-}" ] || ! command -v openshell >/dev/null 2>&1; then
-  echo "skipped: set SANDBOX_NAME and run where the openshell CLI is available."
-  echo "         Inside the sandbox, all three must hold:"
+echo "== 3/3 in-sandbox maker path + denied edge (sandbox: $SANDBOX_NAME) =="
+if ! command -v openshell >/dev/null 2>&1; then
+  echo "NOT RUN: openshell CLI unavailable here — the sandbox maker/denied-edge"
+  echo "         boundary was NOT exercised. Run this on the host where"
+  echo "         bring-up.sh created the sandbox. Inside the sandbox, all three"
+  echo "         must hold:"
   echo "           1. POST host.openshell.internal:8790/v1/intents -> a fresh verdict"
   echo "           2. that intent id is retrievable via the gate on the host"
   echo "           3. GET  host.openshell.internal:8780/healthz     -> DENIED by policy"
+elif ! openshell sandbox list 2>/dev/null | grep -qE "^\s*$SANDBOX_NAME\s"; then
+  echo "  FAIL: sandbox '$SANDBOX_NAME' not found — run scripts/bring-up.sh first"
+  echo "        (or set SANDBOX_NAME to your sandbox). The boundary was NOT tested."
+  FAIL=1
 else
+  SANDBOX_EDGE_TESTED=1
   # 1. Fresh maker submission FROM INSIDE the sandbox, tagged uniquely to this
   #    run so nothing stale can satisfy it. The agent's real path: submit an
   #    intent over the scoped route and get back a current-run verdict.
@@ -112,5 +124,14 @@ else
 fi
 
 echo
-[ "$FAIL" -eq 0 ] && echo "verify: OK" || echo "verify: FAILURES above"
+if [ "$FAIL" -ne 0 ]; then
+  echo "verify: FAILURES above"
+elif [ "$SANDBOX_EDGE_TESTED" -eq 1 ]; then
+  echo "verify: OK (host boundary + in-sandbox maker/denied-edge exercised)"
+else
+  # Never let a skipped security-critical stage read as a full pass.
+  echo "verify: PARTIAL — host boundary OK, but the in-sandbox maker/denied-edge"
+  echo "        was NOT exercised (see stage 3). Re-run on the host with openshell"
+  echo "        for the full check."
+fi
 exit "$FAIL"
