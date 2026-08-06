@@ -57,6 +57,12 @@ BLACKWALL_URL = os.environ.get(
     "BLACKWALL_URL", "https://blackwall-free.onrender.com")
 RAIL_URL = os.environ.get("RAIL_URL", "http://127.0.0.1:8780")
 GATE_PORT = int(os.environ.get("RELEASE_GATE_PORT", "8790"))
+# The gate must be reachable from the sandbox (via the host.openshell.internal
+# route in policy.yaml), so it CANNOT bind host loopback. Default 0.0.0.0; set
+# RELEASE_GATE_BIND to the specific host-internal interface in production. The
+# RAIL stays 127.0.0.1 (host-only) -- that asymmetry IS the denied edge: the
+# gate accepts intents (least privilege), only the host reaches settlement.
+GATE_BIND = os.environ.get("RELEASE_GATE_BIND", "0.0.0.0")
 FORECAST_TIMEOUT = int(os.environ.get("BLACKWALL_TIMEOUT", "90"))
 
 
@@ -156,16 +162,28 @@ APPROVE_TOKEN = os.environ.get("RELEASE_GATE_APPROVE_TOKEN") \
 _LOCK = threading.Lock()
 
 
-def store_has_room(store, cap):
-    """Bounded intent store: a sandboxed spammer cannot grow memory without
-    limit (each submission also costs a live forecast, so the cap bounds
-    that too)."""
-    return len(store) < cap
+def reserve_slot(store, cap, record):
+    """Atomically claim one slot in the bounded intent store: the capacity
+    check and the insert happen together under the lock, so concurrent
+    submits at cap-1 can never both succeed (the store never exceeds cap).
+    Returns True and inserts `record` on success, False when full. Bounds
+    both memory and live-forecast load a compromised agent could drive."""
+    with _LOCK:
+        if len(store) >= cap:
+            return False
+        store[record["id"]] = record
+        return True
 
 
 def new_record(intent, status, detail):
     return {"id": str(uuid.uuid4()), "status": status,
             "intent": intent, "detail": detail}
+
+
+def resolve_gate_bind(explicit):
+    """Gate bind address. Never host loopback (the sandbox must reach it);
+    an explicit value wins, else GATE_BIND (default 0.0.0.0)."""
+    return explicit if explicit else GATE_BIND
 
 
 def approve_record(record, operator, token, expected_token):
@@ -191,6 +209,34 @@ def finalize_release(record, settlement, operator):
     record["status"] = "released"
     record["detail"]["settlement"] = settlement
     record["detail"]["approved_by"] = operator
+
+
+def process_approval(record, forecast_fn, sign_fn, settle_fn, operator):
+    """Complete a human approval of a claimed (releasing) HELD intent, with a
+    FRESH re-screen. A named human overrides a HOLD -- but not a STOP: if the
+    counterparty became sanctioned (or otherwise hard-stops) between submit
+    and approval, the fresh verdict refuses the release even with a valid
+    operator + token. GO or a still-HOLD verdict let the human override
+    stand. Re-forecast happens BEFORE signing, so the decision stays
+    genuinely pre-signature. A re-forecast failure returns the intent to
+    'held' (never releases unscored)."""
+    try:
+        verdict_obj = forecast_fn(record["intent"])
+    except Exception as e:  # noqa: BLE001
+        record["status"] = "held"
+        return "held", {"error": "re-forecast failed: %s" % e}
+    if decide_release(verdict_obj) == REFUSE:
+        record["status"] = "refused"
+        record["detail"]["verdict"] = verdict_obj
+        return "refused", {"verdict": verdict_obj}
+    signature = sign_fn(record["intent"])
+    try:
+        settlement = settle_fn(record["intent"], signature)
+    except Exception as e:  # noqa: BLE001
+        record["status"] = "held"
+        return "error", {"error": "settlement failed: %s" % e}
+    finalize_release(record, settlement, operator)
+    return "released", {"verdict": verdict_obj, "settlement": settlement}
 
 
 # ---------------------------------------------------------------------------
@@ -254,19 +300,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/v1/intents":
-            if not store_has_room(INTENTS, MAX_INTENTS):
-                self._json(429, {"error": "intent store full (%d); tear down "
-                                          "or raise RELEASE_GATE_MAX_INTENTS"
-                                          % MAX_INTENTS})
-                return
             intent, err = validate_intent(self._read_body())
             if err:
                 self._json(400, {"error": err})
                 return
+            # Atomically reserve a slot BEFORE the (slow) forecast so the store
+            # cannot exceed its cap under concurrent submits; the placeholder
+            # counts toward the cap while we score.
+            record = new_record(intent, "processing", {})
+            if not reserve_slot(INTENTS, MAX_INTENTS, record):
+                self._json(429, {"error": "intent store full (%d); tear down "
+                                          "or raise RELEASE_GATE_MAX_INTENTS"
+                                          % MAX_INTENTS})
+                return
             status, detail = process_intent(
                 intent, forecast, simulate_signature, settle)
-            record = new_record(intent, status, detail)
-            INTENTS[record["id"]] = record
+            record["status"] = status
+            record["detail"] = detail
             sys.stdout.write("release-gate: %s %s %s -> %s\n" % (
                 record["id"][:8], intent["amount"], intent["counterparty"],
                 status))
@@ -285,21 +335,23 @@ class Handler(BaseHTTPRequestHandler):
             if code:
                 self._json(code, {"error": err})
                 return
-            # Named-human override of a HOLD: sign-then-settle now. STOPs can
-            # never reach here (status "refused" is terminal).
+            # The record is now claimed (status 'releasing'). Re-screen with a
+            # FRESH verdict: a named human overrides a HOLD, but a fresh STOP
+            # (e.g. the payee became sanctioned since submit) refuses the
+            # release even so. Re-forecast precedes signing -> still
+            # pre-signature.
             operator = self.headers.get("X-Operator")
-            signature = simulate_signature(record["intent"])
-            try:
-                settlement = settle(record["intent"], signature)
-            except Exception as e:  # noqa: BLE001
-                record["status"] = "held"  # release the claim; retryable
-                self._json(502, {"error": "settlement failed: %s" % e})
-                return
-            finalize_release(record, settlement, operator)
-            sys.stdout.write("release-gate: %s HOLD approved by %s\n"
-                             % (record["id"][:8], operator))
+            status, detail = process_approval(
+                record, forecast, simulate_signature, settle, operator)
+            code_map = {"released": 200, "refused": 200, "held": 409,
+                        "error": 502}
+            sys.stdout.write("release-gate: %s approve by %s -> %s\n"
+                             % (record["id"][:8], operator, status))
             sys.stdout.flush()
-            self._json(200, record)
+            if status in ("released", "refused"):
+                self._json(200, record)
+            else:
+                self._json(code_map[status], {"status": status, **detail})
             return
         self._json(404, {"error": "not found"})
 
@@ -308,10 +360,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", GATE_PORT), Handler)
+    bind = resolve_gate_bind(None)
+    server = ThreadingHTTPServer((bind, GATE_PORT), Handler)
     sys.stdout.write(
-        "release-gate: listening on 127.0.0.1:%d (verdicts: %s, rail: %s)\n"
-        % (GATE_PORT, BLACKWALL_URL, RAIL_URL))
+        "release-gate: listening on %s:%d (verdicts: %s, rail: %s)\n"
+        % (bind, GATE_PORT, BLACKWALL_URL, RAIL_URL))
     sys.stdout.write(
         "release-gate: HOLD-approval token (host-side only, pass as "
         "X-Approve-Token): %s\n" % APPROVE_TOKEN)
