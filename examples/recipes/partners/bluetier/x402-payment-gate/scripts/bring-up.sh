@@ -139,44 +139,54 @@ if ! command -v openshell >/dev/null 2>&1; then
   echo "  the full sandbox + denied-edge test."
   exit 0
 fi
+# A sandbox with this name may have been built from an OLDER checkout, and
+# reusing it (only re-applying policy) would run stale Dockerfile/skill/client
+# content -- which verify.sh, exercising the sandbox over curl/exec, cannot
+# detect. So we ALWAYS rebuild from THIS checkout: delete any existing sandbox
+# of this name, then create it fresh.
 if openshell sandbox list 2>/dev/null | grep -qE "^\s*$SANDBOX_NAME\s"; then
-  echo "  sandbox exists; re-applying policy"
-else
-  # OpenShell builds the image from the recipe-root Dockerfile (--from points at
-  # the recipe root so that directory is the build context and the Dockerfile's
-  # COPY paths resolve), applies the whole policy, and reaches Ready. This is the
-  # v0.0.85+ contract (--from <path>, not --image <tag>).
-  #
-  # `create` provisions the sandbox and then tries to attach an interactive
-  # session; run from a script (no controlling TTY) that attach fails with an
-  # "os error 2" and a NON-ZERO exit -- even though the sandbox is created and
-  # goes on to reach Ready. So we must NOT let that exit abort bring-up under
-  # `set -e`: tolerate it and treat the Ready-poll below as the source of truth.
-  # A genuine build/policy failure instead shows up as an Error phase, which the
-  # poll detects and reports immediately.
-  openshell sandbox create \
-    --from "$EXAMPLE_DIR" \
-    --name "$SANDBOX_NAME" \
-    --policy "$EXAMPLE_DIR/policy.yaml" </dev/null || true
-  echo "  waiting for sandbox to reach Ready..."
-  ready=0
-  for _ in $(seq 1 240); do
-    phase="$(openshell sandbox list 2>/dev/null | grep -E "^\s*$SANDBOX_NAME\s" || true)"
-    if printf '%s' "$phase" | grep -qi ready; then ready=1; break; fi
-    if printf '%s' "$phase" | grep -qi error; then
-      echo "  ERROR: sandbox '$SANDBOX_NAME' entered an Error phase:" >&2
-      printf '         %s\n' "$phase" >&2
-      exit 1
-    fi
-    sleep 2
+  echo "  sandbox '$SANDBOX_NAME' already exists -- deleting it so we rebuild from"
+  echo "  this checkout (reusing it could run a stale Dockerfile/skill/client)."
+  openshell sandbox delete "$SANDBOX_NAME" </dev/null >/dev/null 2>&1 || true
+  for _ in $(seq 1 30); do
+    openshell sandbox list 2>/dev/null | grep -qE "^\s*$SANDBOX_NAME\s" || break
+    sleep 1
   done
-  if [ "$ready" -ne 1 ]; then
-    echo "  ERROR: sandbox did not reach Ready in ~8 min. Inspect with" >&2
-    echo "         'openshell sandbox list'." >&2
+fi
+# OpenShell builds the image from the recipe-root Dockerfile (--from points at
+# the recipe root so that directory is the build context and the Dockerfile's
+# COPY paths resolve), applies the whole policy, and reaches Ready. This is the
+# v0.0.85+ contract (--from <path>, not --image <tag>).
+#
+# `create` provisions the sandbox and then tries to attach an interactive
+# session; run from a script (no controlling TTY) that attach fails with an
+# "os error 2" and a NON-ZERO exit -- even though the sandbox is created and
+# goes on to reach Ready. So we must NOT let that exit abort bring-up under
+# `set -e`: tolerate it and treat the Ready-poll below as the source of truth.
+# A genuine build/policy failure instead shows up as an Error phase, which the
+# poll detects and reports immediately.
+openshell sandbox create \
+  --from "$EXAMPLE_DIR" \
+  --name "$SANDBOX_NAME" \
+  --policy "$EXAMPLE_DIR/policy.yaml" </dev/null || true
+echo "  waiting for sandbox to reach Ready..."
+ready=0
+for _ in $(seq 1 240); do
+  phase="$(openshell sandbox list 2>/dev/null | grep -E "^\s*$SANDBOX_NAME\s" || true)"
+  if printf '%s' "$phase" | grep -qi ready; then ready=1; break; fi
+  if printf '%s' "$phase" | grep -qi error; then
+    echo "  ERROR: sandbox '$SANDBOX_NAME' entered an Error phase:" >&2
+    printf '         %s\n' "$phase" >&2
     exit 1
   fi
-  echo "  sandbox Ready"
+  sleep 2
+done
+if [ "$ready" -ne 1 ]; then
+  echo "  ERROR: sandbox did not reach Ready in ~8 min. Inspect with" >&2
+  echo "         'openshell sandbox list'." >&2
+  exit 1
 fi
+echo "  sandbox Ready"
 openshell policy set --policy "$EXAMPLE_DIR/policy.yaml" --wait "$SANDBOX_NAME"
 # Prove the sandbox can actually execute the in-sandbox test tooling before
 # handing off to verify.sh (which relies on `sandbox exec` curl/python3).

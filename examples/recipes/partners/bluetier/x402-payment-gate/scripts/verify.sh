@@ -117,19 +117,28 @@ else
   else
     echo "  FAIL: submitted intent not found as current-run state on the gate"; FAIL=1
   fi
-  # 3. The denied edge: the rail must be unreachable from the sandbox. OpenShell
+  # 3. The denied edge: the rail must be refused from the sandbox, and we must
+  #    PROVE that refusal came from policy -- not from a flaky network. OpenShell
   #    enforces egress at L7 (a supervisor proxy), so a denied route returns an
-  #    HTTP 403 "policy_denied" -- and curl EXITS 0 on that response. So the
-  #    boundary CANNOT be judged by curl's exit code (a denial and a success both
-  #    exit 0). It is OPEN only if the sandbox received the rail's ACTUAL reply
-  #    (the mock-rail role marker); a policy denial, a connection refusal, or any
-  #    other response all mean the boundary held.
-  RAIL_REPLY=$(openshell sandbox exec --name "$SANDBOX_NAME" -- \
-    curl -sS -m 10 http://host.openshell.internal:8780/healthz 2>/dev/null || true)
-  if printf '%s' "$RAIL_REPLY" | grep -q "mock-rail"; then
-    echo "  FAIL: sandbox reached the RAIL — the denied edge is open! ($RAIL_REPLY)"; FAIL=1
+  #    explicit HTTP 403 with a "policy_denied" body. We capture BOTH the status
+  #    and the body and require exactly that: a positive proof of enforcement.
+  #    Anything else -- the rail's actual reply (breach), OR a transport failure
+  #    (DNS error, timeout, connection refusal, proxy error, empty/malformed
+  #    output) -- FAILS, because none of those prove the policy did the refusing.
+  RAIL_OUT=$(openshell sandbox exec --name "$SANDBOX_NAME" -- \
+    curl -sS -m 10 -w '\n<<HTTP_STATUS:%{http_code}>>' \
+      http://host.openshell.internal:8780/healthz 2>&1 || true)
+  RAIL_CODE=$(printf '%s' "$RAIL_OUT" | grep -oE '<<HTTP_STATUS:[0-9]+>>' | grep -oE '[0-9]+' | tail -1)
+  RAIL_BODY=$(printf '%s' "$RAIL_OUT" | sed 's/<<HTTP_STATUS:[0-9]*>>//')
+  if printf '%s' "$RAIL_BODY" | grep -q "mock-rail"; then
+    echo "  FAIL: sandbox REACHED the rail — the denied edge is OPEN (HTTP ${RAIL_CODE:-?}: $RAIL_BODY)"; FAIL=1
+  elif [ "$RAIL_CODE" = "403" ] && printf '%s' "$RAIL_BODY" | grep -q "policy_denied"; then
+    echo "  PASS: rail route refused by policy (HTTP 403 policy_denied) — boundary held"
   else
-    echo "  PASS: rail route denied from the sandbox — boundary held (reply: ${RAIL_REPLY:-<blocked>})"
+    echo "  FAIL: denied edge NOT positively proven — expected HTTP 403 + policy_denied," >&2
+    echo "        got HTTP '${RAIL_CODE:-<none>}' body '${RAIL_BODY:-<empty / transport error>}'." >&2
+    echo "        A timeout, DNS failure, connection refusal, or proxy error is NOT proof" >&2
+    echo "        that OpenShell enforced the policy."; FAIL=1
   fi
 fi
 
