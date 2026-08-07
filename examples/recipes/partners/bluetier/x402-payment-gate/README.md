@@ -2,7 +2,7 @@
 
 A maker/checker payment boundary for [x402](https://www.x402.org/) machine
 payments, in the pattern of the
-[Payment Operations Hermes Assistant](../../nvidia/payment-ops-hermes/README.md):
+[Payment Operations Hermes Assistant](../../../nvidia/payment-ops-hermes/README.md):
 the sandboxed Hermes agent can screen payments and **submit payment intents**,
 but it cannot sign or settle anything — it holds no key and has no network
 route to any payment rail. The **mandatory** decision lives in a host-side
@@ -27,6 +27,19 @@ touch re-screens every intent before any money moves.
 > self-hosting is documented for real workloads. **Support** for this example
 > and the service is provided by BlueTier Operations, not NVIDIA — contact
 > <bluetier.operations@gmail.com>.
+
+> **Scope — a payment-*boundary* demonstration, not a full agent runtime.**
+> `bring-up.sh` stands up the boundary (mock rail + release gate + a
+> policy-scoped sandbox), and `verify.sh` exercises the in-sandbox **maker path
+> at the intent-submission level** (`POST /v1/intents` over the scoped
+> `host.openshell.internal` route → a live verdict) together with the denied
+> edge. It does **not** start an interactive Hermes agent. The skill under
+> `agents/hermes/skills/` documents how a Hermes agent *would* drive this
+> boundary; actually running that agent needs a full NemoClaw Relay+Hermes
+> runtime (inference provider, `nemoclaw-start`) and is a **separate operator
+> step, out of scope here**. What this recipe proves — on a real OpenShell host
+> — is the security property: a prompt in the sandbox cannot reach the rail, and
+> every intent is re-screened by the host-side checker before any money moves.
 
 ## Architecture
 
@@ -141,7 +154,7 @@ scripts/tear-down.sh    # sandbox → host services
 Only python3 is required to exercise the host boundary; docker + openshell
 add the sandbox phases. The policy is a **complete** sandbox policy: the
 inference routes mirror the
-[chief-of-staff recipe](../../nvidia/developer-community-chief-of-staff/README.md)
+[chief-of-staff recipe](../../../nvidia/developer-community-chief-of-staff/README.md)
 unbroadened, plus this recipe's verdict and intent routes — every in-sandbox
 HTTP caller is python3 or curl, exactly matching the binary allowlists.
 
@@ -198,14 +211,21 @@ the store or hammer the verdict service without limit.
   contributed separately in the
   [BLACK_WALL Preflight Guardrail](https://github.com/NVIDIA/nemoclaw-community/pull/52)
   example.
-- **Supervisor middleware is a compatible tightening.** OpenShell's
-  `HTTP_REQUEST`/`PRE_CREDENTIALS` supervisor middleware can run the same
-  decision function against in-flight egress, fail-closed, outside the
-  sandbox. This recipe achieves the outside-the-sandbox mandatory decision
-  through the policy-denied rail + host-side gate (the pattern of the
-  payment-ops recipe); wiring the verdict additionally into supervisor
-  middleware is a welcome follow-up with the maintainers once that
-  configuration surface is documented for community recipes.
+- **Enforcement architecture: host-side gate now, Supervisor middleware as the
+  documented next step.** An earlier review asked for the mandatory decision to
+  run inside OpenShell's `HTTP_REQUEST`/`PRE_CREDENTIALS` **Supervisor
+  middleware** (the decision function against in-flight egress, fail-closed,
+  inside OpenShell's own enforcement layer). This recipe instead places the
+  mandatory decision in a **host-side release gate outside the sandbox** — the
+  established pattern of the
+  [payment-ops-hermes recipe](../../../nvidia/payment-ops-hermes/README.md) — with
+  the rail denied to the sandbox by policy. That host-side boundary is what this
+  recipe validates end to end. Wiring the same verdict into Supervisor
+  middleware is the **ideal fail-closed tightening and the documented next
+  step**, once (and where) that configuration surface is available to community
+  recipes. Adopting the host-side gate as the accepted architecture for *this*
+  recipe is offered for explicit maintainer agreement; the middleware remains
+  tracked as follow-up rather than silently substituted.
 - **Verdict quality is advisory input, not an oracle.** Signals that depend
   on seller-controlled inputs (e.g. the resource URL driving the category
   price baseline) are HOLD-only and evadable by a motivated seller; the free
