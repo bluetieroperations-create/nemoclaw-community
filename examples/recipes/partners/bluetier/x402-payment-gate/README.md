@@ -72,12 +72,16 @@ The denied edge is the central security property: the rail route is absent
 from `policy.yaml`, so a prompt cannot override it. Note the deliberate bind
 asymmetry. The gate runs **two listeners**: a **submit/status** listener the
 sandbox reaches (via the `host.openshell.internal` route) and a **host-only
-approve** listener bound to `127.0.0.1:8791`. The submit listener defaults to
-`127.0.0.1` too (`RELEASE_GATE_BIND`, **safe by default — never `0.0.0.0`**);
-to let the sandbox reach it the operator sets `RELEASE_GATE_BIND` to the
-*specific* host-internal bridge interface behind `host.openshell.internal`, not
-a promiscuous bind. The **rail** binds `127.0.0.1` and is unreachable from the
-sandbox at the network layer — that asymmetry *is* the denied edge. Splitting
+approve** listener bound to `127.0.0.1:8791`. The sandbox reaches the host over
+the OpenShell bridge (`host.openshell.internal` → the `openshell-docker` network
+gateway), *not* host loopback — so the submit listener must bind that **specific
+bridge interface**: loopback would be unreachable from the sandbox (the maker
+path dies), and `0.0.0.0` would expose submission on every host interface (the
+LAN included). `bring-up.sh` discovers the bridge gateway and binds the submit
+listener there automatically (`RELEASE_GATE_BIND`; it defaults to a safe
+`127.0.0.1` when set by hand, and is never `0.0.0.0`). The **rail** binds
+`127.0.0.1` and is unreachable from the sandbox at the network layer — that
+asymmetry *is* the denied edge. Splitting
 the listeners means exposing the submit interface never exposes `/approve`: the
 sandbox can reach only the least-privileged operation (submit), while the
 human-only operations (approve, settle) live behind loopback. Everything
@@ -180,7 +184,7 @@ the store or hammer the verdict service without limit.
 | `scripts/blackwall_client.py` | Stdlib advisory client (`should_sign`: GO→sign, STOP→refuse, else escalate). |
 | `scripts/demo_verdicts.py` | Standalone four-scenario live verdict walkthrough. |
 | `policy.yaml` | Complete sandbox policy: inference + advisory verdict + intent routes; **no rail route**. |
-| `sandbox/Dockerfile` | Reproducible sandbox image: pinned Hermes base + baked skill. |
+| `Dockerfile` | Reproducible sandbox image: pinned Hermes base + baked skill. Built with the recipe root as context (`--from <recipe-root>`), so its `COPY` paths resolve; `.dockerignore` trims that context. |
 | `scripts/bring-up.sh` · `verify.sh` · `tear-down.sh` | Lifecycle (above). |
 
 ## Production notes and limits

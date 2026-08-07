@@ -22,7 +22,10 @@ set -uo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXAMPLE_DIR="$(dirname "$DIR")"
-GATE="http://127.0.0.1:8790"
+# The gate's SUBMIT listener may be bound to the OpenShell bridge (not loopback)
+# so the sandbox can reach it; bring-up.sh records the host-reachable URL here.
+# Fall back to loopback for a standalone/host-only gate.
+GATE="$(cat "$EXAMPLE_DIR/.run/gate.url" 2>/dev/null || echo "http://127.0.0.1:8790")"
 RAIL="http://127.0.0.1:8780"
 WARM="0x02c2fcafce36b4aadb39625866bc6b1699d83043"
 SANCTIONED="0x0330070fd38ec3bb94f58fa55d40368271e9e54a"
@@ -114,12 +117,19 @@ else
   else
     echo "  FAIL: submitted intent not found as current-run state on the gate"; FAIL=1
   fi
-  # 3. The denied edge: the rail must be unreachable from the sandbox.
-  if openshell sandbox exec --name "$SANDBOX_NAME" -- \
-       curl -sS -m 10 http://host.openshell.internal:8780/healthz >/dev/null 2>&1; then
-    echo "  FAIL: sandbox reached the RAIL — the denied edge is open!"; FAIL=1
+  # 3. The denied edge: the rail must be unreachable from the sandbox. OpenShell
+  #    enforces egress at L7 (a supervisor proxy), so a denied route returns an
+  #    HTTP 403 "policy_denied" -- and curl EXITS 0 on that response. So the
+  #    boundary CANNOT be judged by curl's exit code (a denial and a success both
+  #    exit 0). It is OPEN only if the sandbox received the rail's ACTUAL reply
+  #    (the mock-rail role marker); a policy denial, a connection refusal, or any
+  #    other response all mean the boundary held.
+  RAIL_REPLY=$(openshell sandbox exec --name "$SANDBOX_NAME" -- \
+    curl -sS -m 10 http://host.openshell.internal:8780/healthz 2>/dev/null || true)
+  if printf '%s' "$RAIL_REPLY" | grep -q "mock-rail"; then
+    echo "  FAIL: sandbox reached the RAIL — the denied edge is open! ($RAIL_REPLY)"; FAIL=1
   else
-    echo "  PASS: rail route denied from the sandbox (the boundary held)"
+    echo "  PASS: rail route denied from the sandbox — boundary held (reply: ${RAIL_REPLY:-<blocked>})"
   fi
 fi
 

@@ -3,9 +3,20 @@
 
 # Reproducible sandbox image for the x402-payment-gate recipe: the pinned
 # NemoClaw Hermes base plus this recipe's skill and stdlib client baked into
-# the immutable skills directory. Build (scripts/bring-up.sh does this):
+# the immutable skills directory.
 #
-#   docker build -f sandbox/Dockerfile -t x402-payment-gate-sandbox .
+# IMPORTANT -- build context is the RECIPE ROOT (this file's directory), not a
+# sub-directory. The COPY paths below (agents/, scripts/) are resolved against
+# the recipe root, so both `openshell sandbox create --from <recipe-root>` and a
+# plain `docker build` must run with the recipe root as context:
+#
+#   docker build -t x402-payment-gate-sandbox .        # from the recipe root
+#   openshell sandbox create --from <recipe-root> ...  # OpenShell builds it
+#
+# (This is why the Dockerfile lives at the recipe root, not under sandbox/:
+# `openshell --from` uses the Dockerfile's own directory as the build context,
+# so the Dockerfile and the files it COPYs must share one root. See .dockerignore
+# for what is kept out of that context.)
 #
 # Zero-build alternative: policy.yaml sets include_workdir: true, so running
 # the sandbox with this example directory as the workdir exposes the same
