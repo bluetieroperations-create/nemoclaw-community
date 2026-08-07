@@ -84,10 +84,14 @@ start_service() { # start_service <name> <script> <port> <bind>
     exit 1
   fi
   # RELEASE_GATE_BIND is read by release_gate.py for the SUBMIT listener;
-  # mock_rail.py ignores it (the rail is loopback-only by design).
+  # mock_rail.py ignores it (the rail is loopback-only by design). We `exec` the
+  # backgrounded subshell straight into python3, so $! is python3's OWN pid --
+  # NOT the wrapping subshell's. tear-down.sh kills by this pid, so it must be
+  # the real one (capturing the subshell pid leaves the service running).
   ( cd "$EXAMPLE_DIR/host" \
-      && RELEASE_GATE_BIND="$bind" nohup python3 "$script" > "$RUN/$name.log" 2>&1 &
-    echo $! > "$pidf" )
+      && exec env RELEASE_GATE_BIND="$bind" nohup python3 "$script" ) \
+      > "$RUN/$name.log" 2>&1 &
+  echo $! > "$pidf"
   echo "  $name: started (pid $(cat "$pidf"))"
 }
 start_service rail mock_rail.py 8780 127.0.0.1
@@ -142,16 +146,27 @@ else
   # the recipe root so that directory is the build context and the Dockerfile's
   # COPY paths resolve), applies the whole policy, and reaches Ready. This is the
   # v0.0.85+ contract (--from <path>, not --image <tag>).
+  #
+  # `create` provisions the sandbox and then tries to attach an interactive
+  # session; run from a script (no controlling TTY) that attach fails with an
+  # "os error 2" and a NON-ZERO exit -- even though the sandbox is created and
+  # goes on to reach Ready. So we must NOT let that exit abort bring-up under
+  # `set -e`: tolerate it and treat the Ready-poll below as the source of truth.
+  # A genuine build/policy failure instead shows up as an Error phase, which the
+  # poll detects and reports immediately.
   openshell sandbox create \
     --from "$EXAMPLE_DIR" \
     --name "$SANDBOX_NAME" \
-    --policy "$EXAMPLE_DIR/policy.yaml"
+    --policy "$EXAMPLE_DIR/policy.yaml" </dev/null || true
   echo "  waiting for sandbox to reach Ready..."
   ready=0
   for _ in $(seq 1 240); do
-    if openshell sandbox list 2>/dev/null \
-         | grep -E "^\s*$SANDBOX_NAME\s" | grep -qi ready; then
-      ready=1; break
+    phase="$(openshell sandbox list 2>/dev/null | grep -E "^\s*$SANDBOX_NAME\s" || true)"
+    if printf '%s' "$phase" | grep -qi ready; then ready=1; break; fi
+    if printf '%s' "$phase" | grep -qi error; then
+      echo "  ERROR: sandbox '$SANDBOX_NAME' entered an Error phase:" >&2
+      printf '         %s\n' "$phase" >&2
+      exit 1
     fi
     sleep 2
   done
