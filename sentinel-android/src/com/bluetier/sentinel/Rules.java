@@ -69,6 +69,11 @@ public final class Rules {
         /** Packages holding device-administrator rights. */
         public final List<String> admins = new ArrayList<>();
         public Read adminRead = Read.OK;
+        /** True when the administrator list came from probing rather than from
+         *  getActiveAdmins(), which an ordinary app cannot use. */
+        public boolean adminsProbed;
+        /** Candidate administrator receivers examined while probing. */
+        public int adminsProbedCount;
         /** Subject names of certificate authorities in the user trust store. */
         public final List<String> userCerts = new ArrayList<>();
         public Read certRead = Read.OK;
@@ -334,6 +339,17 @@ public final class Rules {
             out.add(new Finding("D01", "MEDIUM", "Could not list device administrators", null,
                     "Android refused this. Unknown, not clean.", true));
             return;
+        }
+        if (d.adminsProbed && d.admins.isEmpty()) {
+            // A positive result from probing is trustworthy: the system said yes
+            // for a named component. A negative is weaker, because "no active
+            // administrator" and "not allowed to ask" look the same from here.
+            out.add(new Finding("D04", "LOW", "No active device administrator found", null,
+                    "Android does not let an ordinary app list administrators, so each of the "
+                    + d.adminsProbedCount + " apps that can act as one was asked about "
+                    + "individually and none is active. Treat that as probable rather than "
+                    + "certain: a refusal to answer and a genuine no look the same from here. "
+                    + "Settings \u203a Security \u203a Device admin apps is the authority.", true));
         }
         for (String pkg : d.admins) {
             AppRec a = d.app(pkg);

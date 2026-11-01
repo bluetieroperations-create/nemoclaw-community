@@ -29,6 +29,9 @@ public class Tests {
         twoCovertPermissionsIsNotCritical();
         threeCovertPermissionsIsCritical();
 
+        probedEmptyAdminListIsHedged();
+        probedAdminHitIsStillAFinding();
+        directEmptyAdminListIsSilent();
         recognisedDpcIsNotAFinding();
         sideloadedAdminIsAFinding();
         sideloadedAdminDoesNotExcuseACertificate();
@@ -187,6 +190,30 @@ public class Tests {
     }
 
     // ----------------------------------------------------------- admin, certs
+
+    static void probedEmptyAdminListIsHedged() {
+        Dev d = base();
+        d.adminsProbed = true;
+        d.adminsProbedCount = 6;
+        check("probing and finding no administrator is reported as probable, not certain",
+                has(d, "D04") && !Rules.detected(Rules.evaluate(d)));
+    }
+
+    static void probedAdminHitIsStillAFinding() {
+        Dev d = base();
+        AppRec x = side("com.unknown.helper");
+        d.apps.add(x);
+        d.admins.add(x.pkg);
+        d.adminsProbed = true;
+        d.adminsProbedCount = 6;
+        check("an administrator found by probing is still a finding",
+                has(d, "D02") && !has(d, "D04"));
+    }
+
+    static void directEmptyAdminListIsSilent() {
+        Dev d = base();                       // adminsProbed stays false
+        check("a direct empty administrator list needs no hedge", !has(d, "D04"));
+    }
 
     static void recognisedDpcIsNotAFinding() {
         Dev d = base();

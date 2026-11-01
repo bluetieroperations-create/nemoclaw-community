@@ -13,7 +13,7 @@ Deleting the branch loses nothing else.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `119bce99527322c89419ffbec9e1aa3a1ab7d98a87d8f82143f630c4444735ec`,
+`dist/sentinel.apk` — 29061 bytes, sha256 `a6ed8006b55f17d8073f1ed5c0482d5ed3dda58c868b7a6a8efce776db36b226`,
 signed, verifies for API 30-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
@@ -30,7 +30,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
 ## Test
 
     javac -d /tmp/e src/com/bluetier/sentinel/Rules.java eval/Tests.java eval/Eval.java
-    java -cp /tmp/e Tests        # 27 regression tests
+    java -cp /tmp/e Tests        # 30 regression tests
     java -cp /tmp/e Eval 4000    # false-positive and detection rates
 
 `Rules.java` holds every decision and imports nothing from Android, so it runs on
@@ -81,10 +81,29 @@ Stated in the app rather than left to be discovered.
 - Traffic is not inspected; what is checked is the certificate that makes
   interception possible. For traffic itself use TrackerControl or NetGuard.
 
-One claim is unverified: granting `GET_APP_OPS_STATS` over adb depends on that
-permission carrying Android's `development` flag. The constant is not public in
-the SDK and the framework manifest does not ship with it, so this could not be
-confirmed. The grant either works or it does not, and the app reports which.
+## Confirmed on hardware
+
+A first run on a Pixel (484 packages, 112 of them ordinary) settled two things
+that could not be established off-device.
+
+`GET_APP_OPS_STATS` does carry the `development` flag. `adb shell pm grant`
+accepts it for a normal app and `unsafeCheckOpNoThrow` then answers from the
+`untrusted_app` SELinux domain. The app-operation checks are real.
+
+`android:read_clipboard` defaults to allowed. The device reported 112 of 112
+ordinary apps holding it. A rule treating that op as a granted capability would
+have raised a finding against every sideloaded and hidden app on a clean phone
+and returned a verdict of "strong indicators of monitoring software". The
+ubiquity calibration, written because this could not be looked up, suppressed it
+on the first real run.
+
+That run also exposed a gap. `getActiveAdmins()` returns null to an ordinary app,
+so device administrators could only be reported as unknown, which is where
+roughly a third of monitoring products hold on to block their own uninstall. It
+now enumerates every receiver advertising `DEVICE_ADMIN_ENABLED` and asks
+`isAdminActive` about each by name. A positive answer is trustworthy; a negative
+one is reported as probable rather than certain, because a refusal to answer and
+a genuine no are indistinguishable from an ordinary app.
 
 The percentages above are only as good as the synthetic device mix they were
 measured against, which was estimated rather than sampled. The mechanism behind

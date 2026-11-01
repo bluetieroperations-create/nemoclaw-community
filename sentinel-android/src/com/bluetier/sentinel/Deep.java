@@ -1,8 +1,12 @@
 package com.bluetier.sentinel;
 
 import android.app.AppOpsManager;
+import android.app.admin.DevicePolicyManager;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -116,6 +120,74 @@ public final class Deep {
             try { if (new java.io.File(p).exists()) out.add(p); }
             catch (Throwable ignored) { }
         }
+        return out;
+    }
+
+    // ------------------------------------------ device administrators
+    //
+    // getActiveAdmins() returns null to an ordinary app on current Android, so
+    // the first real-device run could only say "unknown". Device administrator
+    // is how roughly a third of monitoring products block their own uninstall,
+    // which makes it the worst thing to be blind to.
+    //
+    // isAdminActive(ComponentName) is a plain public call that takes any
+    // component. So: find every receiver that advertises itself as a device
+    // administrator, then ask about each one by name.
+
+    public enum AdminMode {
+        /** getActiveAdmins() answered. Complete. */
+        DIRECT,
+        /** Built by probing each candidate receiver. See the caveat in Rules. */
+        PROBED,
+        /** Neither worked. */
+        REFUSED
+    }
+
+    public static final class Admins {
+        public final List<String> packages = new ArrayList<>();
+        public AdminMode mode = AdminMode.REFUSED;
+        /** How many candidate receivers were examined, in PROBED mode. */
+        public int probed;
+    }
+
+    public static Admins activeAdmins(Context ctx) {
+        Admins out = new Admins();
+        DevicePolicyManager dpm;
+        try {
+            dpm = (DevicePolicyManager) ctx.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            if (dpm == null) return out;
+        } catch (Throwable t) {
+            return out;
+        }
+
+        try {
+            List<ComponentName> direct = dpm.getActiveAdmins();
+            if (direct != null) {
+                for (ComponentName c : direct) out.packages.add(c.getPackageName());
+                out.mode = AdminMode.DIRECT;
+                return out;
+            }
+        } catch (Throwable ignored) { }
+
+        try {
+            PackageManager pm = ctx.getPackageManager();
+            Intent probe = new Intent("android.app.action.DEVICE_ADMIN_ENABLED");
+            List<ResolveInfo> candidates = pm.queryBroadcastReceivers(probe,
+                    PackageManager.MATCH_DISABLED_COMPONENTS);
+            if (candidates == null || candidates.isEmpty()) return out;
+            Set<String> hit = new HashSet<>();
+            for (ResolveInfo r : candidates) {
+                if (r.activityInfo == null) continue;
+                out.probed++;
+                ComponentName c = new ComponentName(r.activityInfo.packageName,
+                                                    r.activityInfo.name);
+                try {
+                    if (dpm.isAdminActive(c)) hit.add(c.getPackageName());
+                } catch (Throwable ignored) { }
+            }
+            out.packages.addAll(hit);
+            out.mode = AdminMode.PROBED;
+        } catch (Throwable ignored) { }
         return out;
     }
 

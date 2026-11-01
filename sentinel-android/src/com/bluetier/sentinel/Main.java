@@ -1,8 +1,6 @@
 package com.bluetier.sentinel;
 
 import android.app.Activity;
-import android.app.admin.DevicePolicyManager;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -172,14 +170,13 @@ public class Main extends Activity {
             }
         }
 
-        try {
-            DevicePolicyManager dpm =
-                    (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
-            List<ComponentName> admins = dpm == null ? null : dpm.getActiveAdmins();
-            if (admins == null) d.adminRead = Rules.Read.REFUSED;
-            else for (ComponentName c : admins) d.admins.add(c.getPackageName());
-        } catch (Throwable t) {
+        Deep.Admins admins = Deep.activeAdmins(this);
+        if (admins.mode == Deep.AdminMode.REFUSED) {
             d.adminRead = Rules.Read.REFUSED;
+        } else {
+            d.admins.addAll(admins.packages);
+            d.adminsProbed = admins.mode == Deep.AdminMode.PROBED;
+            d.adminsProbedCount = admins.probed;
         }
 
         Deep.Certs certs = Deep.userCertificates();
