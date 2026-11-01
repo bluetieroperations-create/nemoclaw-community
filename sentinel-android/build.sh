@@ -15,13 +15,13 @@ echo "1/5 javac"
 javac --release 11 -nowarn -classpath "$AJ" -d $B/classes src/com/bluetier/sentinel/*.java
 
 echo "2/5 d8"
-"$BT/d8" --release --min-api 30 --lib "$AJ" --output $B/dex \
+"$BT/d8" --release --min-api 31 --lib "$AJ" --output $B/dex \
     $(find $B/classes -name '*.class')
 
 echo "3/5 aapt2"
 "$BT/aapt2" compile --dir res -o $B/res/res.zip
 "$BT/aapt2" link -o $B/unsigned.apk -I "$AJ" \
-    --manifest AndroidManifest.xml --min-sdk-version 30 --target-sdk-version 35 \
+    --manifest AndroidManifest.xml --min-sdk-version 31 --target-sdk-version 35 \
     $B/res/res.zip
 
 echo "4/5 package dex"

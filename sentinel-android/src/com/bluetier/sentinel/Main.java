@@ -34,8 +34,14 @@ public class Main extends Activity {
 
     private LinearLayout results;
     private TextView verdict, subtitle;
-    private Button scanButton;
+    private Button scanButton, radioButton, logButton;
     private float dp;
+
+    private static final String[] RADIO_PERMS = {
+        android.Manifest.permission.READ_PHONE_STATE,
+        android.Manifest.permission.ACCESS_FINE_LOCATION,
+        android.Manifest.permission.POST_NOTIFICATIONS,
+    };
 
     private static final int BG = 0xFF12121A, CARD = 0xFF1C1C26, FG = 0xFFE8E8EC,
             MUTED = 0xFF8A8A96, ACCENT = 0xFF7C8CF8, BODY = 0xFFC8C8D0,
@@ -63,6 +69,21 @@ public class Main extends Activity {
         scanButton.setOnClickListener(v -> scan());
         root.addView(scanButton);
 
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        radioButton = new Button(this);
+        radioButton.setOnClickListener(v -> toggleRadio());
+        radioButton.setLayoutParams(new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        logButton = new Button(this);
+        logButton.setText("Radio log");
+        logButton.setOnClickListener(v -> showRadioLog());
+        logButton.setLayoutParams(new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(radioButton);
+        row.addView(logButton);
+        root.addView(row);
+
         results = new LinearLayout(this);
         results.setOrientation(LinearLayout.VERTICAL);
         results.setPadding(0, px(16), 0, 0);
@@ -72,6 +93,106 @@ public class Main extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         root.addView(scroll);
         setContentView(root);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        refreshRadioButton();
+    }
+
+    private void refreshRadioButton() {
+        radioButton.setText(RadioService.isRunning() ? "Stop watching" : "Watch the radio");
+    }
+
+    /**
+     * Start or stop the radio watch.
+     *
+     * It asks for location because Android puts cell identity behind it, which
+     * is worth saying out loud in an app whose subject is software that watches
+     * people. Nothing here takes a position fix, nothing stores a coordinate,
+     * and the app declares no INTERNET permission, so none of it can be sent
+     * anywhere.
+     */
+    private void toggleRadio() {
+        if (RadioService.isRunning()) {
+            stopService(new Intent(this, RadioService.class));
+            radioButton.postDelayed(this::refreshRadioButton, 400);
+            return;
+        }
+        List<String> missing = new ArrayList<>();
+        for (String p : RADIO_PERMS) {
+            if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) missing.add(p);
+        }
+        if (!missing.isEmpty()) {
+            requestPermissions(missing.toArray(new String[0]), 1);
+            return;
+        }
+        // Background location has to be asked for on its own, after the rest.
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{
+                    android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 2);
+            return;
+        }
+        startForegroundService(new Intent(this, RadioService.class));
+        radioButton.postDelayed(this::refreshRadioButton, 600);
+        results.removeAllViews();
+        results.addView(label("Watching. Leave it running while you drive, then come back "
+                + "and open the radio log. It records what the radio did and when the "
+                + "Bluetooth link dropped, so the two can be lined up.", MUTED, 13, false));
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] granted) {
+        super.onRequestPermissionsResult(code, perms, granted);
+        boolean all = granted.length > 0;
+        for (int g : granted) if (g != PackageManager.PERMISSION_GRANTED) all = false;
+        if (all) { toggleRadio(); return; }
+        results.removeAllViews();
+        results.addView(label("The radio watch needs those permissions to read cell identity "
+                + "at all \u2014 Android puts it behind location. Everything else in this app "
+                + "works without them.", MUTED, 13, false));
+    }
+
+    private void showRadioLog() {
+        results.removeAllViews();
+        String events = read("events.log"), log = read("radio.log");
+        if (events.isEmpty() && log.isEmpty()) {
+            results.addView(label("Nothing recorded yet. Press Watch the radio, drive your "
+                    + "usual route, then come back here.", MUTED, 13, false));
+            return;
+        }
+        if (!events.isEmpty()) {
+            results.addView(label("WHAT WAS WORTH NOTING", ACCENT, 12, true));
+            TextView t = label(events, BODY, 12, false);
+            t.setTypeface(Typeface.MONOSPACE);
+            results.addView(t);
+        }
+        if (!log.isEmpty()) {
+            results.addView(label("THE LAST FEW MINUTES", ACCENT, 12, true));
+            TextView t = label(tail(log, 60), MUTED, 11, false);
+            t.setTypeface(Typeface.MONOSPACE);
+            results.addView(t);
+        }
+        results.addView(label("Both files are in this app's own storage. To pull them off the "
+                + "phone:\nadb exec-out run-as com.bluetier.sentinel cat files/events.log",
+                MUTED, 12, false));
+    }
+
+    private String read(String name) {
+        java.io.File f = new java.io.File(getFilesDir(), name);
+        if (!f.isFile()) return "";
+        try {
+            byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
+            return new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) { return ""; }
+    }
+
+    private static String tail(String text, int lines) {
+        String[] all = text.split("\n");
+        if (all.length <= lines) return text;
+        StringBuilder sb = new StringBuilder();
+        for (int i = all.length - lines; i < all.length; i++) sb.append(all[i]).append('\n');
+        return sb.toString();
     }
 
     private int px(int v) { return (int) (v * dp); }

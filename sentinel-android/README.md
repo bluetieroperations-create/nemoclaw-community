@@ -13,8 +13,8 @@ Deleting the branch loses nothing else.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `a6ed8006b55f17d8073f1ed5c0482d5ed3dda58c868b7a6a8efce776db36b226`,
-signed, verifies for API 30-35. Debug-signed, so uninstall any earlier copy first.
+`dist/sentinel.apk` — 29061 bytes, sha256 `bb1ee292ca217f072d33d7dd7e4ebacafafa51d8eb5ca56bbcfac25eb72a3533`,
+signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
 capture, clipboard and overlay access. Those are app operations rather than
@@ -30,8 +30,10 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
 ## Test
 
     javac -d /tmp/e src/com/bluetier/sentinel/Rules.java eval/Tests.java eval/Eval.java
-    java -cp /tmp/e Tests        # 30 regression tests
-    java -cp /tmp/e Eval 4000    # false-positive and detection rates
+    java -cp /tmp/e Tests        # 30 regression tests, the installed-software rules
+    java -cp /tmp/e RadioTests   # 18 regression tests, the radio rules
+    java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
+    java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
 `Rules.java` holds every decision and imports nothing from Android, so it runs on
 an ordinary JVM. That is the only reason the rates below exist: while the rules
@@ -67,6 +69,73 @@ per app. That calibration is measured on the device being scanned rather than
 hard-coded, because the platform default for `android:read_clipboard` could not be
 established off-device, and if it is "allowed" then a rule treating it as a
 capability is worthless.
+
+## Watching the radio
+
+A second mode runs while you drive and writes down what the radio did. It reads
+the serving cell, its tracking area, the neighbouring cells, the technology in
+use, and the band and downlink frequency, once every six seconds.
+
+It cannot see the baseband's signalling. Rayhunter reads a Qualcomm diagnostic
+interface and watches actual RRC messages; no ordinary Android app can reach
+that, and the Android 15 APIs for null ciphering and identity disclosure
+(`SecurityAlgorithmUpdate`, `CellularIdentifierDisclosure`) are privileged and
+absent from the public SDK. What is left is consequences: a phone dragged onto
+an older network, a cell that changed which tracking area it claims, neighbours
+that vanished while the signal stayed strong.
+
+No single one of those means anything. A tracking area changes every time you
+cross town, rural roads fall back to 3G by themselves, and a voice call on a
+network using circuit-switched fallback puts a phone on 3G at full signal for
+the length of the call. So nothing is reported on its own: indicators score,
+each kind counts once, and only a combination inside two minutes is worth
+saying. The discriminating fact is not the downgrade but the signal strength
+behind it, because a coverage hole is quiet and equipment close enough to
+collect an identity is loud.
+
+Measured over 20,000 synthetic drive-days per population, three seeds, including
+about 2,000 trips to unfamiliar routes and roughly 35 carrier re-plans:
+
+| Population | Drivers alerted in 20 days | Alerts per drive-day |
+|---|---|---|
+| Urban commute | 0% | 0 |
+| Rural commute | 0% | 0 |
+
+| A fake cell, after 20 days of ordinary commuting | Caught |
+|---|---|
+| Reusing a real cell id with a new tracking area | 100% (all high) |
+| A wholly new cell | 79% |
+
+The first is the realistic case, because equipment that wants phones to attach
+to it imitates the network already there. The second is harder and the number is
+lower; it is reported as it measured.
+
+Six defects surfaced only because this was measured rather than reasoned about.
+The first version alerted 100% of drivers at 8 to 23 alerts per day. Ranking
+non-standalone 5G above LTE made every ordinary handover look like a
+two-generation downgrade. The suspicion window tumbled on a fixed cadence
+instead of sliding from the first piece of evidence, so two indicators forty
+seconds apart could straddle a boundary and never meet. The neighbour rule asked
+whether the previous sample had neighbours, which by the time a run was three
+samples long could never be true. `lastAlertAt` started at `Long.MIN_VALUE` and
+`now - lastAlertAt` overflowed negative, so the cooldown test was false and no
+first alert could ever fire. The same indicator repeating was corroborating
+itself, which alerted 40% of rural drivers. And a carrier re-planning an area
+moves many cells at once where equipment is one cell, so counting how many
+changed together separates them.
+
+### What it costs
+
+The radio watch asks for location permission, because Android puts cell identity
+behind it. It is worth being blunt about that in an app whose subject is software
+that watches people. It never requests a position fix and never records a
+coordinate; "where you are" is represented by which cells are nearby, not by
+where they are. Everything is written to the app's private storage.
+
+The app declares no `INTERNET` permission, which you can confirm in Settings or
+with `aapt dump badging`. An app without it cannot open a network connection, so
+none of this can be sent anywhere, by this app or by anything that compromises
+it. Decline the radio permissions and every other check still works.
 
 ## What it cannot see
 

@@ -1,21 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.bluetier.sentinel" android:versionCode="1" android:versionName="1.0">
-  <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35" />
+    package="com.bluetier.sentinel" android:versionCode="2" android:versionName="1.1">
+
+  <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="35" />
+
+  <!-- There is deliberately no INTERNET permission here. Nothing this app
+       collects can leave the phone, and you can confirm that in Settings:
+       an app without INTERNET cannot open a network connection at all. -->
+
   <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
   <!-- signature|privileged|development. The development flag is what matters:
        adb can grant it to a normal app with `pm grant`, once, and it persists.
-       Without it the app simply reports that it could not read app operations. -->
+       Confirmed working on a Pixel. Without it the app says the app-operation
+       checks did not run rather than passing over them. -->
   <uses-permission android:name="android.permission.GET_APP_OPS_STATS"
       tools:ignore="ProtectedPermissions" />
+
+  <!-- For the radio watch only. Android puts cell identity behind location
+       permission; this app never asks for a position fix and never records a
+       coordinate. Deny these and everything else still works. -->
+  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
   <application android:label="Sentinel" android:icon="@android:drawable/ic_lock_lock"
-      android:theme="@android:style/Theme.Material.NoActionBar">
+      android:theme="@android:style/Theme.Material.NoActionBar"
+      android:allowBackup="false">
     <activity android:name=".Main" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
+    <service android:name=".RadioService"
+        android:exported="false"
+        android:foregroundServiceType="location" />
   </application>
 </manifest>
