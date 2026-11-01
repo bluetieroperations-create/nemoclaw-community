@@ -279,9 +279,9 @@ public class RadioService extends Service {
     // ----------------------------------------------------------------- output
 
     private static String line(RadioRules.Sample s) {
-        return s.rat + " " + s.rsrp + "dBm  " + RadioRules.bandName(s.band, s.downlinkKhz)
-                + "  cell=" + s.cid + " pci=" + s.pci + " tac=" + s.tac
-                + "  neighbours=" + s.neighbours.size()
+        return String.format(Locale.US, "%-6s %4ddBm %-12s cell=%-10d pci=%-4d tac=%-6d nbr=%d",
+                s.rat, s.rsrp, RadioRules.shortBand(s.band, s.downlinkKhz),
+                s.cid, s.pci, s.tac, s.neighbours.size())
                 + (s.btAudio ? "  bt=on" : "  bt=off") + (s.inCall ? "  call" : "");
     }
 

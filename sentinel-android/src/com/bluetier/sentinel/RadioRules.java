@@ -349,6 +349,13 @@ public final class RadioRules {
 
     // ------------------------------------------------------------------ naming
 
+    /** Short form, for a log line that has to stay scannable. */
+    public static String shortBand(int band, int khz) {
+        String n = band > 0 ? (CROWDING.containsKey(band) ? "n" + band : "b" + band) : "b?";
+        return khz > 0 ? n + " " + (khz / 1000) + "MHz" : n;
+    }
+
+    /** Long form, for the sentence that has to explain itself. */
     public static String bandName(int band, int khz) {
         String crowd = CROWDING.get(band);
         if (crowd != null) return crowd;
