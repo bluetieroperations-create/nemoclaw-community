@@ -173,13 +173,15 @@ public class Main extends Activity {
             t.setTypeface(Typeface.MONOSPACE);
             results.addView(t);
         }
-        results.addView(label("Both files are in this app's own storage. To pull them off the "
-                + "phone:\nadb exec-out run-as com.bluetier.sentinel cat files/events.log",
+        results.addView(label("To pull these off the phone:\n"
+                + "adb shell cat /sdcard/Android/data/com.bluetier.sentinel/files/events.log",
                 MUTED, 12, false));
     }
 
     private String read(String name) {
-        java.io.File f = new java.io.File(getFilesDir(), name);
+        java.io.File dir = getExternalFilesDir(null);
+        if (dir == null) dir = getFilesDir();
+        java.io.File f = new java.io.File(dir, name);
         if (!f.isFile()) return "";
         try {
             byte[] b = java.nio.file.Files.readAllBytes(f.toPath());

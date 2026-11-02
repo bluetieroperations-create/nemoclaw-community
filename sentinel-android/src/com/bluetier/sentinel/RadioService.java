@@ -285,8 +285,22 @@ public class RadioService extends Service {
                 + (s.btAudio ? "  bt=on" : "  bt=off") + (s.inCall ? "  call" : "");
     }
 
+    /**
+     * Where the logs go.
+     *
+     * App-specific external storage, not getFilesDir(), because `adb run-as`
+     * only works on a debuggable build and this one is not. From
+     * /sdcard/Android/data/<package>/files the shell user can read them with a
+     * plain cat. It still needs no storage permission and is still removed when
+     * the app is uninstalled.
+     */
+    private File logDir() {
+        File ext = getExternalFilesDir(null);
+        return ext != null ? ext : getFilesDir();
+    }
+
     private void append(String name, String text) {
-        try (FileWriter w = new FileWriter(new File(getFilesDir(), name), true)) {
+        try (FileWriter w = new FileWriter(new File(logDir(), name), true)) {
             w.write(text);
             w.write('\n');
         } catch (Throwable ignored) { }
