@@ -1,38 +1,29 @@
-# radio-timeline.ps1 - turn a radio capture into a readable timeline.
+# radio-timeline.ps1 - turn a radio capture into a timeline, and line the
+# Bluetooth drops up against what the radio was doing.
 #
-# The formats here were taken from a real capture and the patterns were checked
-# against its actual lines, including two that must NOT match: the first version
-# of the summariser read mipc_msg_get_msg_type(02) as a silent SMS 1325 times,
-# and RfxController.onCheckIfRejectMessage as a network refusal.
+# Formats taken from real captures. Two bugs are pinned here by their fixes:
+#   - the ring-buffer pattern was anchored with ^, but dumpsys indents its
+#     entries, so it matched almost nothing. It now allows leading whitespace.
+#   - the Bluetooth section matched any line with "connect" and a clock time,
+#     which led with NetworkAgentInfo noise. It now parses shim::acl only.
 #
-# Two sources carry the history:
-#   dumpsys telephony.registry  'local logs:'  - timestamped service state, with
-#                                 mChannelNumber, which is the ARFCN
-#   logcat -b radio  RmmNwHdlr   - serving cell: plmn, arfcn, cid, tac, rsrp,
-#                                 rsrq, sinr and timing advance
-#
-# Neither is reachable by an app. Both are reachable by the shell user.
+# Nothing here is reachable by an app. All of it is reachable by the shell user.
 
 param([string]$Path = "")
-
 if (-not $Path) {
   $Path = (Get-ChildItem radio-capture-*.txt | Sort-Object LastWriteTime -Desc | Select-Object -First 1).FullName
 }
 if (-not (Test-Path $Path)) { Write-Host "No capture file found." -ForegroundColor Red; exit 1 }
 
-$raw = Get-Content $Path -Raw
+$lines = (Get-Content $Path -Raw) -split "`r?`n"
 $out = "radio-timeline-$(Get-Date -Format yyyyMMdd-HHmmss).txt"
-function W($s) { Add-Content $out $s; }
+function W($s) { Add-Content $out $s }
 
-# ---------- frequency -> band -------------------------------------------------
 function NrMhz([double]$n) {
   if ($n -lt 600000)  { return $n * 0.005 }
   if ($n -lt 2016667) { return 3000 + ($n - 600000) * 0.015 }
   return 24250.08 + ($n - 2016667) * 0.060
 }
-# Downlink ranges. Incomplete on purpose: a frequency outside them is reported
-# as "not in my table", never as an anomaly, because a gap in this list is my
-# ignorance and not something wrong with the network.
 $BANDS = @(
   @(617,652,'n71'), @(717,728,'n29'), @(729,746,'n12'), @(746,756,'n13'),
   @(758,768,'n14'), @(859,894,'n5/n26'), @(925,960,'n8'), @(1805,1880,'n3'),
@@ -41,103 +32,150 @@ $BANDS = @(
 )
 function BandOf([double]$mhz) {
   foreach ($b in $BANDS) { if ($mhz -ge $b[0] -and $mhz -le $b[1]) { return $b[2] } }
-  return "not in my table"
+  return "not in my table"   # a gap here is my ignorance, never an anomaly
 }
-# Bluetooth and 2.4GHz Wi-Fi sit at 2400-2483.5 MHz.
 function Crowds24([double]$mhz) { return ($mhz -ge 2300 -and $mhz -le 2700) }
 
-# ---------- parse -------------------------------------------------------------
-$rmm = [regex]'RmmNwHdlr:\s*\[(?<slot>\d)\]\s*(?<rat>\w+):state\s*=\s*(?<state>\d+),\s*registred=(?<reg>\d+),\s*plmn\s*=\s*(?<plmn>\S+?),\s*pscPci\s*=\s*(?<pci>\S+),\s*(?:nr_)?arfcn\s*=\s*(?<arfcn>\d+),\s*cid\s*=\s*(?<cid>\S+),\s*tac\s*=\s*(?<tac>\S+),\s*rsrp\s*=\s*(?<rsrp>-?\d+),\s*rsrq\s*=\s*(?<rsrq>-?\d+),\s*sinr\s*=\s*(?<sinr>-?\d+)'
-$ring = [regex]'^(?<ts>\d{4}-\d\d-\d\dT[\d:.]+)\s+-\s+(?<what>\w+)'
+# ---------------- parse ------------------------------------------------------
+# leading \s* matters: dumpsys indents these
+$ring = [regex]'^\s*(?<ts>\d{4}-\d\d-\d\dT[\d:.]+)\s+-\s+(?<what>\w+)'
 $chan = [regex]'mChannelNumber=(?<n>-?\d+)'
 $dreg = [regex]'mDataRegState=(?<v>\d)\((?<name>\w+)\)'
-$endc = [regex]'endc state currRat:\s*(?<rat>\d+)\s*\(Endc:\s*(?<endc>true|false)\)'
+$rmm  = [regex]'RmmNwHdlr:\s*\[(?<slot>\d)\]\s*(?<rat>\w+):state\s*=\s*\d+,\s*registred=\d+,\s*plmn\s*=\s*(?<plmn>\S+?),\s*pscPci\s*=\s*(?<pci>\S+),\s*(?:nr_)?arfcn\s*=\s*(?<arfcn>\d+),\s*cid\s*=\s*(?<cid>\S+),\s*tac\s*=\s*(?<tac>\S+),\s*rsrp\s*=\s*(?<rsrp>-?\d+)'
+$acl  = [regex]'shim::acl\s+peer:(?<peer>[0-9a-fx:]+)(?:\[(?<kind>\w+))?.*?is_locally_initiated:(?<local>\w+)\s+creation_time:(?<start>[\d-]+ [\d:.]+)\s+teardown_time:(?<end>[\d-]+ [\d:.]+)\s+disconnect_reason:(?<reason>\w+)'
+
+$radioState = New-Object System.Collections.ArrayList   # time-ordered band history
+$sessions   = New-Object System.Collections.ArrayList
+$cells      = @{}
+
+foreach ($line in $lines) {
+  $r = $ring.Match($line)
+  if ($r.Success) {
+    $c = $chan.Match($line); $g = $dreg.Match($line)
+    if ($c.Success -and [double]$c.Groups['n'].Value -gt 0) {
+      $n = [double]$c.Groups['n'].Value; $mhz = NrMhz $n
+      [void]$radioState.Add([PSCustomObject]@{
+        Time = [datetime]::Parse($r.Groups['ts'].Value)
+        Mhz = $mhz; Band = (BandOf $mhz); Reg = $(if ($g.Success) { $g.Groups['name'].Value } else { $null })
+      })
+    }
+    continue
+  }
+  $m = $rmm.Match($line)
+  if ($m.Success) {
+    $n = [double]$m.Groups['arfcn'].Value; $mhz = NrMhz $n
+    $k = "$($m.Groups['cid'].Value)|$($m.Groups['tac'].Value)|$(BandOf $mhz)"
+    if (-not $cells.ContainsKey($k)) {
+      $cells[$k] = [PSCustomObject]@{
+        Rat=$m.Groups['rat'].Value; Arfcn=$n; Mhz=$mhz; Band=(BandOf $mhz)
+        Tac=$m.Groups['tac'].Value; Pci=$m.Groups['pci'].Value
+        Dbm=([int]$m.Groups['rsrp'].Value - 156); N=0 }
+    }
+    $cells[$k].N++
+    continue
+  }
+  $a = $acl.Match($line)
+  if ($a.Success) {
+    $s = [datetime]::Parse($a.Groups['start'].Value)
+    $e = [datetime]::Parse($a.Groups['end'].Value)
+    [void]$sessions.Add([PSCustomObject]@{
+      Peer=$a.Groups['peer'].Value
+      Kind=$(if ($a.Groups['kind'].Success) { $a.Groups['kind'].Value } else { 'CLASSIC' })
+      Start=$s; End=$e; Secs=[math]::Round(($e-$s).TotalSeconds,1)
+      Local=($a.Groups['local'].Value -eq 'true'); Reason=$a.Groups['reason'].Value })
+  }
+}
 
 W "radio timeline  $(Get-Date -Format o)"
 W "source: $(Split-Path $Path -Leaf)"
-W ""
 
-# --- serving cell history from the modem log ---
-W "===== serving cell, from the modem log ====="
-W "(rsrp/rsrq/sinr are 3GPP indices; dBm = rsrp - 156, dB = rsrq/2 - 43, sinr/2 - 23)"
+# ---------------- serving cells ---------------------------------------------
 W ""
-$seenCell = @{}
-$lastBand = $null
-foreach ($line in ($raw -split "`r?`n")) {
-  $m = $rmm.Match($line)
-  if (-not $m.Success) { continue }
-  $n = [double]$m.Groups['arfcn'].Value
-  $mhz = NrMhz $n
-  $band = BandOf $mhz
-  $dbm = [int]$m.Groups['rsrp'].Value - 156
-  $key = "$($m.Groups['cid'].Value)|$($m.Groups['tac'].Value)|$band"
-  if (-not $seenCell.ContainsKey($key)) {
-    $seenCell[$key] = 0
-    $flag = if (Crowds24 $mhz) { "  <- crowds Bluetooth" } else { "" }
-    W ("  {0,-8} arfcn {1,-8} {2,9:N2} MHz  {3,-14} tac={4,-8} pci={5,-6} rsrp={6} dBm{7}" -f `
-       $m.Groups['rat'].Value, $n, $mhz, $band, $m.Groups['tac'].Value, $m.Groups['pci'].Value, $dbm, $flag)
+W "===== serving cells seen in the modem log ====="
+if ($cells.Count -eq 0) {
+  W "  none in this capture. RmmNwHdlr only logs when the cell or registration"
+  W "  changes, so a phone sitting still on Wi-Fi writes nothing. Drive, then capture."
+} else {
+  W "  (rsrp dBm = index - 156)"
+  foreach ($c in ($cells.Values | Sort-Object -Property N -Desc)) {
+    $flag = if (Crowds24 $c.Mhz) { "  <- crowds Bluetooth" } else { "" }
+    W ("  {0,-5} arfcn {1,-8} {2,9:N2} MHz  {3,-14} tac={4,-8} pci={5,-6} rsrp={6,5} dBm  x{7}{8}" -f `
+       $c.Rat, $c.Arfcn, $c.Mhz, $c.Band, $c.Tac, $c.Pci, $c.Dbm, $c.N, $flag)
   }
-  $seenCell[$key]++
 }
-if ($seenCell.Count -eq 0) { W "  (no RmmNwHdlr lines - this build may name the modem log differently)" }
 
-# --- the ring buffer: the actual timeline ---
+# ---------------- band timeline ----------------------------------------------
 W ""
-W "===== timeline, from the telephony ring buffer ====="
-$events = New-Object System.Collections.ArrayList
-foreach ($line in ($raw -split "`r?`n")) {
-  $r = $ring.Match($line)
-  if (-not $r.Success) { continue }
-  $c = $chan.Match($line); $g = $dreg.Match($line)
-  $o = [PSCustomObject]@{
-    Time = $r.Groups['ts'].Value
-    What = $r.Groups['what'].Value
-    Chan = if ($c.Success) { [double]$c.Groups['n'].Value } else { $null }
-    Reg  = if ($g.Success) { $g.Groups['name'].Value } else { $null }
+W "===== band changes, from the telephony ring buffer ====="
+$sorted = $radioState | Sort-Object Time
+W ("  $($sorted.Count) state entries" + $(if ($sorted.Count) { "  spanning $($sorted[0].Time.ToString('MM-dd HH:mm')) to $($sorted[-1].Time.ToString('MM-dd HH:mm'))" } else { "" }))
+W ""
+$prev = $null; $changes = 0
+foreach ($e in $sorted) {
+  if ($e.Band -ne $prev) {
+    $flag = if (Crowds24 $e.Mhz) { "   <- crowds Bluetooth" } else { "" }
+    W ("  {0}  {1,-14} {2,9:N2} MHz{3}" -f $e.Time.ToString('MM-dd HH:mm:ss'), $e.Band, $e.Mhz, $flag)
+    $prev = $e.Band; $changes++
   }
-  [void]$events.Add($o)
 }
-W ("  $($events.Count) entries")
+if ($changes -eq 0) { W "  (no band changes recorded in this buffer)" }
+
+# ---------------- bluetooth --------------------------------------------------
 W ""
-$prevBand = $null; $prevReg = $null; $shown = 0
-foreach ($e in $events) {
-  $note = $null
-  if ($e.Chan -ne $null -and $e.Chan -gt 0) {
-    $mhz = NrMhz $e.Chan; $b = BandOf $mhz
-    if ($b -ne $prevBand) {
-      $flag = if (Crowds24 $mhz) { "   <- crowds Bluetooth" } else { "" }
-      $note = ("band now {0} ({1:N2} MHz){2}" -f $b, $mhz, $flag)
-      $prevBand = $b
+W "===== bluetooth links, by device ====="
+if ($sessions.Count -eq 0) { W "  (no shim::acl lines found)" }
+else {
+  foreach ($grp in ($sessions | Group-Object Peer | Sort-Object Count -Desc)) {
+    $g = $grp.Group
+    $med = ($g | Sort-Object Secs)[[int]($g.Count/2)].Secs
+    $reasons = ($g | Group-Object Reason | Sort-Object Count -Desc | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ", "
+    W ""
+    W ("  {0}  [{1}]  {2} session(s), median {3}s" -f $grp.Name, $g[0].Kind, $g.Count, $med)
+    W ("    {0}" -f $reasons)
+  }
+  W ""
+  W "  Reasons, and what they mean for this question:"
+  W "    CONNECTION_TIMEOUT            the link failed - packets stopped arriving."
+  W "                                  This is what radio interference looks like."
+  W "    CONNECTION_TERMINATED_BY_LOCAL_HOST   your phone chose to close it."
+  W "    REMOTE_USER_TERMINATED_CONNECTION     the other device closed it."
+  W "    TRANSACTION_RESPONSE_TIMEOUT  the other device stopped answering."
+}
+
+# ---------------- the correlation --------------------------------------------
+W ""
+W "===== did a band change precede each Bluetooth drop? ====="
+if ($sorted.Count -eq 0 -or $sessions.Count -eq 0) {
+  W "  Need both a band history and Bluetooth sessions covering the same hours."
+  W "  The ring buffer holds only the last few hours, so capture soon after driving."
+} else {
+  $window = 60   # seconds
+  $hits = 0
+  foreach ($s in ($sessions | Sort-Object End)) {
+    $before = $sorted | Where-Object { $_.Time -le $s.End } | Select-Object -Last 1
+    if (-not $before) { continue }
+    $gap = [math]::Round(($s.End - $before.Time).TotalSeconds, 0)
+    if ($gap -le $window) {
+      $hits++
+      $verdict = if (Crowds24 $before.Mhz) {
+        "band {0} ({1:N0} MHz) crowds Bluetooth - {2}" -f $before.Band, $before.Mhz, `
+          $(if ($s.Reason -eq 'CONNECTION_TIMEOUT') { "and the link timed out, which is what that looks like" } else { "but the link was closed deliberately ($($s.Reason)), not lost" })
+      } else {
+        "band {0} ({1:N0} MHz) does not crowd Bluetooth" -f $before.Band, $before.Mhz
+      }
+      W ("  {0}  {1}  dropped after {2}s  |  {3}s earlier: {4}" -f `
+         $s.End.ToString('MM-dd HH:mm:ss'), $s.Peer, $s.Secs, $gap, $verdict)
     }
   }
-  if ($e.Reg -and $e.Reg -ne $prevReg) {
-    $note = (($note, "data $($e.Reg)") | Where-Object { $_ }) -join "; "
-    $prevReg = $e.Reg
-  }
-  if ($note) { W ("  {0}  {1}" -f $e.Time, $note); $shown++ }
-}
-if ($shown -eq 0) { W "  (no band or service-state changes in the buffer - it may be shorter than the drive)" }
-
-# --- bluetooth, if the capture has it ---
-if ($raw -match 'bluetooth event history') {
-  W ""
-  W "===== bluetooth ====="
-  $bt = ($raw -split "`r?`n" | Where-Object { $_ -match '(?i)(ACL |bond|connect|disconnect).*(\d\d:\d\d:\d\d)' } | Select-Object -First 25)
-  if ($bt) { $bt | ForEach-Object { W ("  " + $_.Trim()) } }
-  else { W "  (no timestamped connection lines found)" }
+  if ($hits -eq 0) { W "  No Bluetooth drop fell within $window s of a recorded radio state entry." }
 }
 
 W ""
-W "===== how to read this ====="
-W "A band marked 'crowds Bluetooth' sits between 2300 and 2700 MHz, against the"
-W "2400-2483 MHz range Bluetooth uses. A phone shares one front end between them"
-W "and quiets the short-range radio to protect the cellular link, so a car audio"
-W "drop within seconds of such a band change is the phone working as designed."
-W ""
-W "What would NOT be that: a drop to LTE, UMTS or GSM while the signal stays"
-W "strong, a tracking area that changes without the cell changing, or a cell that"
-W "has no neighbours at close range. None of those are in this file; they are"
-W "what the Watch the radio mode looks for while you drive."
+W "A drop that times out seconds after the radio moved into 2300-2700 MHz is the"
+W "coexistence effect: the phone shares one front end between that band and the"
+W "2.4 GHz Bluetooth uses, and quiets the short-range radio to protect the call."
+W "A drop that was closed deliberately by either end is not that, whatever band"
+W "was in use at the time."
 
 Write-Host "Wrote $out" -ForegroundColor Green
-Get-Content $out | Select-Object -First 40
+Get-Content $out

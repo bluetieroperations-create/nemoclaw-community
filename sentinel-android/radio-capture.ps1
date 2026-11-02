@@ -55,7 +55,7 @@ Write-Host "`nCollecting. Each line says whether this phone allowed it.`n"
 
 Grab "service state ring buffer" "dumpsys telephony.registry" `
      "Holds 'local logs:' - a timestamped history of service state, cell and signal changes. The most useful single source." | Out-Null
-Grab "radio log buffer" "logcat -b radio -d -t 3000" `
+Grab "radio log buffer" "logcat -b radio -d -t 12000" `
      "RIL traffic. On production builds this is often near-empty; on others it carries registration and SMS events an app can never see." | Out-Null
 Grab "all radio-ish log lines" "logcat -d -t 4000 -s RILJ:V Telephony:V GsmCdmaPhone:V ServiceStateTracker:V NetworkRegistration:V" `
      "The same material via the main buffer, where the radio buffer is empty." | Out-Null
@@ -75,8 +75,6 @@ Grab "boot and build state" "getprop | grep -iE 'verifiedboot|flash.locked|build
      "Whether the system partition is still the manufacturer's." | Out-Null
 Grab "bluetooth event history" "dumpsys bluetooth_manager" `
      "Android's own record of Bluetooth connections and disconnections, for lining a dropped car link up against what the radio did." | Out-Null
-Grab "modem network handler log" "logcat -b radio -d -t 4000 -s RmmNwHdlr:V NetworkTypeController:V RILJ:V" `
-     "The serving-cell lines: plmn, nr_arfcn, cid, tac, rsrp and timing advance, which no app API exposes." | Out-Null
 Grab "Sentinel radio events" "cat /sdcard/Android/data/com.bluetier.sentinel/files/events.log" `
      "Anything the watch thought worth saying, if it was running." | Out-Null
 Grab "Sentinel radio log" "cat /sdcard/Android/data/com.bluetier.sentinel/files/radio.log" `
