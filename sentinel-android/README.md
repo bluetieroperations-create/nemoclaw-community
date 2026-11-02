@@ -13,7 +13,7 @@ Deleting the branch loses nothing else.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `18cf8fb8fee243648d95fa063ddb8c42e1a526364c6ff562a6b663a9a2ddb2a6`,
+`dist/sentinel.apk` — 29061 bytes, sha256 `f42a56c8b16d33c0f6c92142d5541119d90b9034da41acd76ed84fad3b86b664`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen

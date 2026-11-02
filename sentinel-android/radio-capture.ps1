@@ -102,6 +102,12 @@ Grab "boot and build state" "getprop | grep -iE 'verifiedboot|flash.locked|build
      "Whether the system partition is still the manufacturer's." | Out-Null
 Grab "bluetooth event history" "dumpsys bluetooth_manager" `
      "Android's own record of Bluetooth connections and disconnections, for lining a dropped car link up against what the radio did." | Out-Null
+Grab "A2DP audio stream events" "logcat -d -t 20000 -s btif_av:V bta_av:V A2dpService:V BluetoothA2dpService:V BluetoothA2dpServiceJni:V bt_stack:V AudioFlinger:V" `
+     "The audio stream layer. A brief dropout that recovers mutes the A2DP stream without tearing down the link, so it leaves no trace in the connection log and shows up only here." | Out-Null
+Grab "bluetooth HCI snoop log present?" "ls -l /data/misc/bluetooth/logs/ 2>/dev/null" `
+     "Every HCI packet, if Developer options > Enable Bluetooth HCI snoop log is on. The definitive record; needs Wireshark to read." | Out-Null
+Grab "current network type" "dumpsys telephony.registry | grep -iE 'mDataRegState|mChannelNumber|getRilDataRadioTechnology|NrState' | head -20" `
+     "Which technology and channel the phone is on right now, for confirming an LTE-only test took effect." | Out-Null
 Grab "Sentinel radio events" "cat /sdcard/Android/data/com.bluetier.sentinel/files/events.log" `
      "Anything the watch thought worth saying, if it was running." | Out-Null
 Grab "Sentinel radio log" "cat /sdcard/Android/data/com.bluetier.sentinel/files/radio.log" `

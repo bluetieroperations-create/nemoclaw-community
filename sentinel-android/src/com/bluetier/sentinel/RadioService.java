@@ -55,6 +55,9 @@ public class RadioService extends Service {
     private volatile SignalStrength signalStrength;
     private volatile List<PhysicalChannelConfig> channels = Collections.emptyList();
     private volatile boolean inCall, btAudio, nsa;
+    /** Last radio state seen, so an audio edge can name the band it happened on. */
+    private volatile int lastBand = -1, lastKhz = -1;
+    private volatile String lastRat;
     private volatile Integer pendingRegFail;
     private volatile int events, samples;
 
@@ -98,9 +101,17 @@ public class RadioService extends Service {
     private void attach() {
         Executor ex = getMainExecutor();
 
+        // Logged the moment it happens, not at the next six-second sample.
+        //
+        // The symptom is a brief audio cut that recovers, and a brief cut does not
+        // necessarily tear down the Bluetooth link - A2DP can mute while the link
+        // stays up, which leaves no trace in the connection log. What does change
+        // is the audio route, and that arrives here as a callback. Sampling it
+        // every six seconds would miss a three-second dropout entirely; this
+        // timestamps the edge itself.
         audioCallback = new AudioDeviceCallback() {
-            @Override public void onAudioDevicesAdded(AudioDeviceInfo[] d) { refreshBt(); }
-            @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] d) { refreshBt(); }
+            @Override public void onAudioDevicesAdded(AudioDeviceInfo[] d) { routeChanged("added", d); }
+            @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] d) { routeChanged("removed", d); }
         };
         am.registerAudioDeviceCallback(audioCallback, handler);
         refreshBt();
@@ -140,6 +151,31 @@ public class RadioService extends Service {
         callback = new Cb();
         try { tm.registerTelephonyCallback(ex, callback); }
         catch (Throwable t) { append("radio.log", stamp() + "  could not attach to the radio: " + t); }
+    }
+
+    private void routeChanged(String how, AudioDeviceInfo[] changed) {
+        boolean wasBt = btAudio;
+        refreshBt();
+        boolean involvedBt = false;
+        StringBuilder names = new StringBuilder();
+        if (changed != null) {
+            for (AudioDeviceInfo d : changed) {
+                int t = d.getType();
+                if (t == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+                    involvedBt = true;
+                    if (names.length() > 0) names.append(", ");
+                    names.append(t == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ? "A2DP" : "SCO");
+                    try { names.append(" ").append(d.getProductName()); } catch (Throwable ignored) { }
+                }
+            }
+        }
+        if (!involvedBt) return;
+        String band = RadioRules.shortBand(lastBand, lastKhz);
+        append("events.log", stamp() + "  [AUDIO] bluetooth output " + how + ": " + names
+                + "\n            radio was on " + band
+                + (lastRat == null ? "" : " / " + lastRat)
+                + ", " + (wasBt == btAudio ? "route unchanged overall"
+                                           : (btAudio ? "audio is back" : "audio is gone")));
     }
 
     private void refreshBt() {
@@ -199,6 +235,7 @@ public class RadioService extends Service {
             try { readCells(s); } catch (Throwable ignored) { }
         }
 
+        lastBand = s.band; lastKhz = s.downlinkKhz; lastRat = s.rat;
         samples++;
         List<RadioRules.Event> found = watcher.accept(s);
         append("radio.log", stamp() + "  " + line(s));
