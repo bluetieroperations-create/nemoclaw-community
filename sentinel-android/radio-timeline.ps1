@@ -142,9 +142,44 @@ else {
   W "    TRANSACTION_RESPONSE_TIMEOUT  the other device stopped answering."
 }
 
-# ---------------- the correlation --------------------------------------------
+# ---------------- dwell, before any correlation ------------------------------
+# A band the phone is almost always on explains nothing about an event that
+# happened while it was on it. The first version reported "band n41 crowds
+# Bluetooth" against every drop on a phone that spent 99.7% of the window on
+# n41, where chance alone put 98% of drops there. Measure the base rate first
+# and say plainly when the comparison cannot carry weight.
+$dwell = @{}
+if ($sorted.Count -gt 1) {
+  for ($i = 0; $i -lt $sorted.Count; $i++) {
+    $stop = if ($i + 1 -lt $sorted.Count) { $sorted[$i+1].Time } else { $sorted[-1].Time }
+    $sec = ($stop - $sorted[$i].Time).TotalSeconds
+    if ($sec -gt 0) { $dwell[$sorted[$i].Band] = [double]$dwell[$sorted[$i].Band] + $sec }
+  }
+}
+$totalDwell = 0.0; foreach ($v in $dwell.Values) { $totalDwell += $v }
+$dominant = $null; $dominantShare = 0.0
+W ""
+W "===== how much of the window was spent on each band ====="
+if ($totalDwell -le 0) { W "  (not enough state entries to measure)" }
+else {
+  foreach ($k in ($dwell.Keys | Sort-Object { -$dwell[$_] })) {
+    $share = $dwell[$k] / $totalDwell
+    if ($share -gt $dominantShare) { $dominantShare = $share; $dominant = $k }
+    W ("  {0,-14} {1,7:N1} min   {2,6:P1} of the window" -f $k, ($dwell[$k]/60), $share)
+  }
+}
+
 W ""
 W "===== did a band change precede each Bluetooth drop? ====="
+if ($dominantShare -gt 0.8) {
+  W ("  READ THIS FIRST. The phone was on {0} for {1:P1} of this window, so almost" -f $dominant, $dominantShare)
+  W ("  any event lands there by chance. 'The band crowds Bluetooth' below is then")
+  W ("  a statement about where the phone lives, not about what caused anything.")
+  W ("  Chance alone puts a single drop on {0} with probability {1:N3}." -f $dominant, $dominantShare)
+  W ("  To separate the two you need the same route with that band excluded:")
+  W ("    set the phone to LTE only, drive it again, and compare.")
+  W ""
+}
 if ($sorted.Count -eq 0 -or $sessions.Count -eq 0) {
   W "  Need both a band history and Bluetooth sessions covering the same hours."
   W "  The ring buffer holds only the last few hours, so capture soon after driving."
@@ -168,6 +203,31 @@ if ($sorted.Count -eq 0 -or $sessions.Count -eq 0) {
     }
   }
   if ($hits -eq 0) { W "  No Bluetooth drop fell within $window s of a recorded radio state entry." }
+}
+
+# ---------------- per-band drop rate -----------------------------------------
+W ""
+W "===== drops per minute, by the band in use at the time ====="
+if ($totalDwell -le 0 -or $sessions.Count -eq 0) { W "  (not enough data)" }
+else {
+  $byBand = @{}
+  foreach ($s in $sessions) {
+    $before = $sorted | Where-Object { $_.Time -le $s.End } | Select-Object -Last 1
+    if (-not $before) { continue }
+    if ($s.Reason -eq 'CONNECTION_TIMEOUT' -or $s.Reason -eq 'TRANSACTION_RESPONSE_TIMEOUT') {
+      $byBand[$before.Band] = [int]$byBand[$before.Band] + 1
+    }
+  }
+  foreach ($k in ($dwell.Keys | Sort-Object { -$dwell[$_] })) {
+    $mins = $dwell[$k] / 60
+    $n = [int]$byBand[$k]
+    $rate = if ($mins -gt 0) { $n / $mins } else { 0 }
+    $note = if ($mins -lt 5) { "   too little time on this band to compare" } else { "" }
+    W ("  {0,-14} {1,3} timed-out link(s) in {2,7:N1} min = {3,6:N3}/min{4}" -f $k, $n, $mins, $rate, $note)
+  }
+  W ""
+  W "  Only a band with real time on it can be compared against another. Where one"
+  W "  band dominates, these rates are not evidence either way."
 }
 
 W ""
