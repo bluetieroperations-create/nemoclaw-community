@@ -48,6 +48,33 @@ function Grab($label, $cmd, $note) {
   return $ok
 }
 
+# Check there is a phone on the other end before running twelve commands at it.
+# Without this, a disconnected phone produced twelve "refused or empty" lines,
+# which reads like the phone denying access rather than adb having no device at
+# all - and it burned a ring-buffer window that only lasts a few hours.
+$devs = (& adb devices 2>&1 | Out-String)
+$online = ($devs -split "`r?`n" | Where-Object { $_ -match '\sdevice$' })
+if (-not $online) {
+  Write-Host ""
+  Write-Host "  No phone is connected. Nothing was captured." -ForegroundColor Red
+  Write-Host ""
+  Write-Host "  adb devices said:" -ForegroundColor DarkGray
+  ($devs -split "`r?`n" | Where-Object { $_.Trim() }) | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+  Write-Host ""
+  Write-Host "  Wireless debugging usually switches itself off when the phone leaves"
+  Write-Host "  and rejoins Wi-Fi, which is what a drive does. On the phone:"
+  Write-Host "    Settings > Developer options > Wireless debugging > on"
+  Write-Host "  then run this again. If it is already on, pair afresh:"
+  Write-Host "    adb pair <ip>:<pairing port> <6-digit code>"
+  Write-Host ""
+  Write-Host "  Anything the Watch the radio mode recorded is a file on the phone and"
+  Write-Host "  is not affected by this. Open Sentinel and press Radio log to read it."
+  Write-Host ""
+  exit 1
+}
+Write-Host ""
+Write-Host "  Connected: $($online[0].Trim())" -ForegroundColor Green
+
 Add-Content $out "radio capture $(Get-Date -Format o)"
 Add-Content $out "identifiers redacted on write; review before sending anywhere"
 
