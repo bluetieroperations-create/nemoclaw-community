@@ -61,9 +61,9 @@ Grab "all radio-ish log lines" "logcat -d -t 4000 -s RILJ:V Telephony:V GsmCdmaP
      "The same material via the main buffer, where the radio buffer is empty." | Out-Null
 Grab "network registration detail" "dumpsys telephony.registry --all" `
      "Fuller registration state than the API exposes." | Out-Null
-Grab "preferred network mode" "settings get global preferred_network_mode" `
+Grab "preferred network mode" "for s in 1 2 3 4 5; do settings get global preferred_network_mode\$s; done" `
      "Which technologies the phone will attach to. The 2G bit is the one that matters." | Out-Null
-Grab "2G toggle" "cmd phone get-allowed-network-types-for-reason" `
+Grab "2G toggle" "cmd phone get-allowed-network-types-for-reason -s 0" `
      "Whether 2G is switched off. 2G does not authenticate the network, so it is what cheap interception equipment forces a phone onto." | Out-Null
 Grab "carrier configuration" "dumpsys carrier_config" `
      "Includes whether the carrier permits 2G, and the roaming and emergency settings." | Out-Null
@@ -73,9 +73,13 @@ Grab "connectivity" "dumpsys connectivity --short" `
      "Which networks are up and which is default." | Out-Null
 Grab "boot and build state" "getprop | grep -iE 'verifiedboot|flash.locked|build.tags|debuggable|secure'" `
      "Whether the system partition is still the manufacturer's." | Out-Null
-Grab "Sentinel radio events" "run-as com.bluetier.sentinel cat files/events.log" `
+Grab "bluetooth event history" "dumpsys bluetooth_manager" `
+     "Android's own record of Bluetooth connections and disconnections, for lining a dropped car link up against what the radio did." | Out-Null
+Grab "modem network handler log" "logcat -b radio -d -t 4000 -s RmmNwHdlr:V NetworkTypeController:V RILJ:V" `
+     "The serving-cell lines: plmn, nr_arfcn, cid, tac, rsrp and timing advance, which no app API exposes." | Out-Null
+Grab "Sentinel radio events" "cat /sdcard/Android/data/com.bluetier.sentinel/files/events.log" `
      "Anything the watch thought worth saying, if it was running." | Out-Null
-Grab "Sentinel radio log" "run-as com.bluetier.sentinel cat files/radio.log" `
+Grab "Sentinel radio log" "cat /sdcard/Android/data/com.bluetier.sentinel/files/radio.log" `
      "The six-second samples, for lining a Bluetooth drop up against a band change." | Out-Null
 
 Write-Host "`nWrote $out"

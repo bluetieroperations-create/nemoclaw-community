@@ -82,18 +82,25 @@ if ($radio -and $radio.Length -gt 200) {
 
   W ""
   W "===== what is worth hunting for, and whether it is there ====="
+  # Each pattern must be anchored to something that only means the thing.
+  # The first version used 'type.?0', which matched mipc_msg_get_msg_type(02) in
+  # modem IPC logging 1325 times and reported it as silent SMS, and 'reject',
+  # which matched RfxController.onCheckIfRejectMessage and reported a framework
+  # check as a network refusal. A loose pattern here produces exactly the kind of
+  # confident wrong answer this whole tool exists to avoid.
   $hunt = [ordered]@{
-    'SMS of any kind'          = 'SMS|Sms'
-    'silent / type-0 SMS'      = '(?i)silent|type.?0|class.?0|\bMT_SMS\b'
-    'binary / data SMS'        = '(?i)data ?sms|binary sms|port.?addressed|SIM toolkit|STK|CAT_'
-    'paging'                   = '(?i)paging|\bPAGE\b'
-    'attach / registration'    = '(?i)attach|registration|REGISTERED|RRC_CONNECT'
-    'registration rejected'    = '(?i)reject|REGISTRATION_DENIED|cause'
-    'identity requested'       = '(?i)identity request|IMSI request|GET_IMSI'
-    'ciphering / security'     = '(?i)cipher|integrity|encrypt|SECURITY_MODE|NAS_SEC'
-    'cell reselect / handover' = '(?i)reselect|handover|HANDOVER|CELL_CHANGE'
-    'band / earfcn / nrarfcn'  = '(?i)earfcn|nrarfcn|uarfcn|\bband\b'
-    'tracking / location area' = '(?i)\btac\b|tracking area|\blac\b|location area'
+    'SMS delivery'             = '(?i)\b(NEW_SMS|SMS_DELIVER|onNewSms|dispatchMessage|InboundSmsHandler|SmsDispatcher)\b'
+    'silent / type-0 SMS'      = '(?i)(silent sms|type ?zero|\bTYPE0\b|SMS_TYPE_0|class ?0 sms|\bMT_SMS\b|protocolIdentifier *= *0x40)'
+    'binary / data SMS'        = '(?i)(data ?sms|binary ?sms|port ?addressed|destPort|\bWAP_PUSH\b|SIM ?Toolkit|\bCAT_|\bSTK_)'
+    'paging'                   = '(?i)(\bpaging\b|PAGING_|\bpage ?record\b)'
+    'attach / registration'    = '(?i)(\battach\b|registred|mVoiceRegState|mDataRegState|NetworkRegistrationInfo|RRC_CONNECT)'
+    'registration refused'     = '(?i)(REGISTRATION_DENIED|registration ?reject|attach ?reject|\bcause ?= ?\d+|DENIED)'
+    'identity requested'       = '(?i)(identity ?request|IMSI ?request|GET_IMSI|REQUEST_IDENTITY)'
+    'ciphering / security'     = '(?i)(ciphering|SECURITY_MODE|NAS_SEC|integrity ?protect|\bEEA[0-3]\b|\bNEA[0-3]\b|\bA5/[0-3]\b)'
+    'cell reselect / handover' = '(?i)(reselect|\bhandover\b|HANDOVER|CELL_CHANGE|mobility)'
+    'serving cell detail'      = '(?i)(nr_arfcn|earfcn|nrarfcn|uarfcn|mChannelNumber)'
+    'tracking area'            = '(?i)(\btac ?=|tracking ?area|\blac ?=)'
+    'timing advance'           = '(?i)(\bta ?=|timing ?advance|mTimingAdvance)'
   }
   foreach ($h in $hunt.GetEnumerator()) {
     $m = ([regex]::Matches($radio, $h.Value)).Count
