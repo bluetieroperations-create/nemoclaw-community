@@ -17,63 +17,60 @@ param([string]$Phone = "")
 $ErrorActionPreference = "Continue"
 $out = "radio-capture-$(Get-Date -Format yyyyMMdd-HHmmss).txt"
 
-if (-not $Phone) {
-  $line = adb mdns services 2>$null | Select-String '_adb-tls-connect' | Select-Object -First 1
-  if ($line) { $Phone = ($line.ToString() -split '\s+')[-1] }
-}
-if ($Phone) { adb connect $Phone 2>$null | Out-Null }
-$target = if ($Phone) { @("-s", $Phone) } else { @() }
+# Connect, then find the transport that actually answers.
+#
+# Two things went wrong here on a real run. The address came from
+# `adb mdns services`, which reports an ip:port; the phone's IP had changed, so
+# every command was sent to a dead address while `adb devices` still listed the
+# phone under its mDNS name and the guard reported "Connected". And the guard
+# indexed a Where-Object result with [0], which on a single match indexes into
+# the string and yields a char, so it threw before printing anything useful.
+#
+# The lesson is the one this whole project keeps relearning: being listed is not
+# the same as answering. Ask, and believe the answer.
 
-function Redact([string]$t) {
-  if (-not $t) { return "" }
-  $t = $t -replace '\b\d{14,16}\b', '<identifier-removed>'      # IMEI / IMSI / ICCID
-  $t = $t -replace '(?<![\d.])\+?1?[-. (]?\d{3}[-. )]\s?\d{3}[-. ]\d{4}\b', '<phone-removed>'
-  $t = $t -replace '[\w.+-]+@[\w-]+\.[\w.]+', '<email-removed>'
-  $t = $t -replace '(?i)(imsi|iccid|msisdn|subscriberId|deviceId)([=:\s]+)\S+', '$1$2<removed>'
-  return $t
-}
-
-function Grab($label, $cmd, $note) {
-  Write-Host -NoNewline ("  {0,-34}" -f $label)
-  $text = (& adb @target shell $cmd 2>&1 | Out-String)
-  $ok = $LASTEXITCODE -eq 0 -and $text.Trim().Length -gt 40 `
-        -and $text -notmatch 'Permission Denial|SecurityException|Unknown command|not found'
-  if ($ok) { Write-Host "ok ($($text.Length) chars)" -ForegroundColor Green }
-  else     { Write-Host "refused or empty" -ForegroundColor DarkYellow }
-  Add-Content $out "`n===== $label ====="
-  Add-Content $out "# $note"
-  Add-Content $out "# command: adb shell $cmd"
-  if ($ok) { Add-Content $out (Redact $text) }
-  else     { Add-Content $out "(refused or empty - this phone's build does not expose it to the shell user)" }
-  return $ok
+adb start-server 2>&1 | Out-Null
+if ($Phone) { adb connect $Phone 2>&1 | Out-Null }
+else {
+  $svc = @(adb mdns services 2>$null | Select-String '_adb-tls-connect')
+  if ($svc.Count -gt 0) { adb connect (($svc[0].ToString() -split '\s+')[-1]) 2>&1 | Out-Null }
 }
 
-# Check there is a phone on the other end before running twelve commands at it.
-# Without this, a disconnected phone produced twelve "refused or empty" lines,
-# which reads like the phone denying access rather than adb having no device at
-# all - and it burned a ring-buffer window that only lasts a few hours.
-$devs = (& adb devices 2>&1 | Out-String)
-$online = ($devs -split "`r?`n" | Where-Object { $_ -match '\sdevice$' })
-if (-not $online) {
+# Take the serial from adb devices, which names the transport that exists,
+# rather than from mdns, which names an address that may have moved.
+$devLines = @(adb devices 2>&1 | Where-Object { $_ -match '\s+device\s*$' })
+$serial = $null
+foreach ($d in $devLines) {
+  $cand = ($d -split '\s+')[0]
+  if (-not $cand) { continue }
+  # Probe it. A transport that cannot echo cannot be captured from.
+  $probe = (& adb -s $cand shell echo sentinel-probe 2>&1 | Out-String)
+  if ($probe -match 'sentinel-probe') { $serial = $cand; break }
+}
+
+if (-not $serial) {
   Write-Host ""
-  Write-Host "  No phone is connected. Nothing was captured." -ForegroundColor Red
+  Write-Host "  No phone answered. Nothing was captured." -ForegroundColor Red
   Write-Host ""
   Write-Host "  adb devices said:" -ForegroundColor DarkGray
-  ($devs -split "`r?`n" | Where-Object { $_.Trim() }) | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+  @(adb devices 2>&1) | Where-Object { $_.ToString().Trim() } | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
   Write-Host ""
-  Write-Host "  Wireless debugging usually switches itself off when the phone leaves"
-  Write-Host "  and rejoins Wi-Fi, which is what a drive does. On the phone:"
-  Write-Host "    Settings > Developer options > Wireless debugging > on"
-  Write-Host "  then run this again. If it is already on, pair afresh:"
-  Write-Host "    adb pair <ip>:<pairing port> <6-digit code>"
+  Write-Host "  A phone can be listed here and still not answer: wireless debugging"
+  Write-Host "  switches itself off when the phone leaves and rejoins Wi-Fi, and its"
+  Write-Host "  address changes when the router hands out a new one."
   Write-Host ""
-  Write-Host "  Anything the Watch the radio mode recorded is a file on the phone and"
-  Write-Host "  is not affected by this. Open Sentinel and press Radio log to read it."
+  Write-Host "  On the phone: Settings > Developer options > Wireless debugging > on."
+  Write-Host "  Then:  adb kill-server ; adb start-server ; adb connect <ip>:<port>"
+  Write-Host "  If it still refuses, pair afresh with the code on that screen."
+  Write-Host ""
+  Write-Host "  Whatever Watch the radio recorded is a file on the phone and is not"
+  Write-Host "  affected by any of this. Open Sentinel and press Radio log."
   Write-Host ""
   exit 1
 }
+$target = @("-s", $serial)
 Write-Host ""
-Write-Host "  Connected: $($online[0].Trim())" -ForegroundColor Green
+Write-Host "  Answering: $serial" -ForegroundColor Green
 
 Add-Content $out "radio capture $(Get-Date -Format o)"
 Add-Content $out "identifiers redacted on write; review before sending anywhere"
