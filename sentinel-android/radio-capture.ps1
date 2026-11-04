@@ -121,6 +121,22 @@ Grab "bluetooth HCI snoop log" "ls -l /data/misc/bluetooth/logs/ 2>/dev/null" `
      "Every HCI packet, if Developer options > Enable Bluetooth HCI snoop log is on."
 Grab "current network type" "dumpsys telephony.registry | grep -iE 'mDataRegState|mChannelNumber' | head -20" `
      "Which technology and channel the phone is on now, for confirming an LTE-only test took effect."
+# --- wireless Android Auto rides a Wi-Fi Direct link, not Bluetooth ---------
+# The Bluetooth link to the head unit carries only hands-free calling. Screen,
+# touch and all audio go over Wi-Fi Direct, so a dropout that kills the whole
+# infotainment system is a Wi-Fi event and appears in none of the Bluetooth
+# sources above.
+Grab "wifi direct state" "dumpsys wifip2p" `
+     "The Wi-Fi Direct link wireless Android Auto runs on, including the group, the channel and recent failures."
+Grab "wifi state and history" "dumpsys wifi" `
+     "Connection history, scan activity and roaming. A scan can interrupt a Direct link."
+Grab "wifi connection events" "logcat -d -t 20000 -s WifiP2pService:V WifiP2pNative:V wpa_supplicant:V WifiClientModeImpl:V ClientModeImpl:V WifiStateMachine:V WifiNative:V" `
+     "Where a Wi-Fi Direct link going down is recorded, with a reason."
+Grab "android auto events" "logcat -d -t 20000 -s CAR.SERVICE:V CAR.WIFI:V CAR.GAL:V GH.WirelessClient:V GH.CarClientManager:V GH.LifetimeManager:V" `
+     "Android Auto's own view of the projection session starting, stopping and failing."
+Grab "android auto process" "dumpsys activity services com.google.android.projection.gearhead | head -60" `
+     "Whether the projection service is running and what it is bound to."
+
 Grab "Sentinel radio events" "cat /sdcard/Android/data/com.bluetier.sentinel/files/events.log" `
      "What the watch thought worth saying, including timestamped audio dropouts."
 Grab "Sentinel radio log" "cat /sdcard/Android/data/com.bluetier.sentinel/files/radio.log" `
