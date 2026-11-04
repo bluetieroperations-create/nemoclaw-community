@@ -230,6 +230,30 @@ else {
   W "  band dominates, these rates are not evidence either way."
 }
 
+# ---------------- what the watch itself recorded -----------------------------
+# The app samples every six seconds and timestamps each Bluetooth audio route
+# change the moment it happens. That is the only record of a brief dropout that
+# recovers, since such a dropout never tears down the link. The capture has been
+# collecting it; the timeline was not showing it, which made the single most
+# direct piece of evidence invisible.
+W ""
+W "===== what Sentinel's watch recorded ====="
+$inSentinel = $false; $sentinelLines = 0
+foreach ($line in $lines) {
+  if ($line -match '^===== Sentinel radio events =====') { $inSentinel = $true; continue }
+  if ($inSentinel -and $line -match '^===== ') { $inSentinel = $false; continue }
+  if (-not $inSentinel) { continue }
+  if ($line -match '^#' -or -not $line.Trim()) { continue }
+  if ($line -match '\(refused or empty') { W "  (the watch was not running, or wrote nothing)"; break }
+  W ("  " + $line.TrimEnd())
+  $sentinelLines++
+}
+if ($sentinelLines -eq 0 -and -not $inSentinel) { }
+W ""
+W "  [AUDIO] lines are Bluetooth audio appearing or disappearing, timestamped at"
+W "  the instant it happened, with the band in use at that moment. Those are the"
+W "  brief dropouts. Everything else there is the radio rules firing."
+
 W ""
 W "A drop that times out seconds after the radio moved into 2300-2700 MHz is the"
 W "coexistence effect: the phone shares one front end between that band and the"
