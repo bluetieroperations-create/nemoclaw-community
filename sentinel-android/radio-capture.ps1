@@ -132,8 +132,12 @@ Grab "wifi state and history" "dumpsys wifi" `
      "Connection history, scan activity and roaming. A scan can interrupt a Direct link."
 Grab "wifi connection events" "logcat -d -t 20000 -s WifiP2pService:V WifiP2pNative:V wpa_supplicant:V WifiClientModeImpl:V ClientModeImpl:V WifiStateMachine:V WifiNative:V" `
      "Where a Wi-Fi Direct link going down is recorded, with a reason."
-Grab "android auto events" "logcat -d -t 20000 -s CAR.SERVICE:V CAR.WIFI:V CAR.GAL:V GH.WirelessClient:V GH.CarClientManager:V GH.LifetimeManager:V" `
-     "Android Auto's own view of the projection session starting, stopping and failing."
+Grab "android auto events" "logcat -d -t 40000 | grep -iE 'gearhead|projection|CarConnection|AAWireless|wireless.?android.?auto' | tail -120" `
+     "Android Auto's own view. Tag names differ between builds, so this greps the whole buffer rather than guessing tags, which returned nothing."
+Grab "wifi direct events" "logcat -d -t 40000 | grep -iE 'WifiP2p|p2p-|GroupStarted|GroupRemoved|supplicant.*p2p' | tail -120" `
+     "Where a Wi-Fi Direct group forming or going away is recorded. The dumpsys ring buffer is short and scrolls past a drive within hours."
+Grab "wifi direct group now" "dumpsys wifip2p | grep -iE 'mGroup|networkName|interface|frequency|freq|isGO|owner|mDetailedState' " `
+     "The group as it stands right now. Only meaningful while Android Auto is actually connected."
 Grab "android auto process" "dumpsys activity services com.google.android.projection.gearhead | head -60" `
      "Whether the projection service is running and what it is bound to."
 
