@@ -230,6 +230,52 @@ else {
   W "  band dominates, these rates are not evidence either way."
 }
 
+# ---------------- the link the audio actually uses ---------------------------
+# Wireless Android Auto carries screen, touch and audio over Wi-Fi Direct; the
+# Bluetooth link to the head unit is hands-free calling only. So the frequency
+# of this link, not the Bluetooth band, is what matters.
+#
+# The structured parse is backed by printing the raw matching lines, because the
+# exact shape of dumpsys output varies by build and a parse that silently finds
+# nothing is the failure mode this project keeps running into.
+W ""
+W "===== the Wi-Fi Direct link Android Auto runs on ====="
+$p2pSection = $false; $freqs = @(); $rawP2p = New-Object System.Collections.ArrayList
+foreach ($line in $lines) {
+  if ($line -match '^===== wifi direct state =====') { $p2pSection = $true; continue }
+  if ($p2pSection -and $line -match '^===== ') { $p2pSection = $false; continue }
+  if (-not $p2pSection) { continue }
+  if ($line -match '(?i)(freq|frequency|channel|networkName|SSID|interface|isGO|owner|mGroup|P2P_|GroupStarted|GroupRemoved)') {
+    [void]$rawP2p.Add($line.TrimEnd())
+    foreach ($m in [regex]::Matches($line, '(?i)(?:freq(?:uency)?)\D{0,3}(\d{4})')) {
+      $freqs += [int]$m.Groups[1].Value
+    }
+  }
+}
+if ($rawP2p.Count -eq 0) {
+  W "  (nothing matched in the wifi direct section - the link may not have been up"
+  W "   when this was captured. Capture while Android Auto is actually connected.)"
+} else {
+  if ($freqs.Count -gt 0) {
+    foreach ($f in ($freqs | Sort-Object -Unique)) {
+      $band = if ($f -ge 2400 -and $f -le 2500) { "2.4 GHz" }
+              elseif ($f -ge 5100 -and $f -le 5900) { "5 GHz" }
+              elseif ($f -ge 5925) { "6 GHz" } else { "unrecognised" }
+      $note = if ($band -eq "2.4 GHz") {
+                "   <- only ~$([int](2496 - $f)) MHz below n41. Coexistence is plausible here."
+              } elseif ($band -eq "5 GHz") {
+                "   <- far from n41. Cellular coexistence does not explain a drop on this link."
+              } else { "" }
+      W ("  link frequency {0} MHz  = {1}{2}" -f $f, $band, $note)
+    }
+  } else {
+    W "  (no frequency found; raw lines below)"
+  }
+  W ""
+  W "  raw lines from the Wi-Fi Direct dump:"
+  foreach ($r in ($rawP2p | Select-Object -First 30)) { W ("    " + $r) }
+}
+
 # ---------------- what the watch itself recorded -----------------------------
 # The app samples every six seconds and timestamps each Bluetooth audio route
 # change the moment it happens. That is the only record of a brief dropout that
