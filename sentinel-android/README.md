@@ -54,6 +54,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e CorrelatorTests  # 10 tests, cross-signal coincidence
     java -cp /tmp/e SelfAuditTests   # 7 tests, the coverage self-audit
     java -cp /tmp/e GuardTests       # 8 assertion guards over the eval bounds
+    java -cp /tmp/e BoundaryTests    # 14 threshold edge tests
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
