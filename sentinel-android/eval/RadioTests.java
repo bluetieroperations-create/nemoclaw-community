@@ -25,6 +25,8 @@ public class RadioTests {
         manyCellsChangingIsAReplan();
         foreignNetworkWithoutRoamingScores();
         alertsHaveACooldown();
+        strongSignalPoorQualityIsAnInterferenceNote();
+        strongSignalGoodQualityIsSilent();
         ordinaryBarringAloneIsNotAnAlert();
         unconditionalBarringPlusDowngradeAlerts();
         emergencyBarringIsSaidOnItsOwn();
@@ -240,6 +242,24 @@ public class RadioTests {
                 !any(feed(w, run), "R01"));
     }
 
+    static void strongSignalPoorQualityIsAnInterferenceNote() {
+        Watcher w = new Watcher();
+        List<Sample> run = new ArrayList<>();
+        for (int i = 0; i < 6; i++) { Sample s = normal(i); s.rsrp = -70; s.sinrDb = -4; run.add(s); }
+        List<Event> ev = feed(w, run);
+        // it is a posture note, not an alarm
+        boolean note = false, alarm = false;
+        for (Event e : ev) { if (e.id.equals("R11")) note = true; if (!e.severity.equals("INFO")) alarm = true; }
+        check("strong signal with poor quality is an interference note, not an alarm", note && !alarm);
+    }
+    static void strongSignalGoodQualityIsSilent() {
+        Watcher w = new Watcher();
+        List<Sample> run = new ArrayList<>();
+        for (int i = 0; i < 6; i++) { Sample s = normal(i); s.rsrp = -70; s.sinrDb = 18; run.add(s); }
+        boolean any = false;
+        for (Event e : feed(w, run)) if (e.id.equals("R11")) any = true;
+        check("strong signal with good quality raises no interference note", !any);
+    }
     static void bluetoothDropAfterCrowdingBandIsExplained() {
         Watcher w = new Watcher();
         List<Sample> run = new ArrayList<>();

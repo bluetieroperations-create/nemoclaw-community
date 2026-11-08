@@ -18,6 +18,12 @@ import android.net.Network;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.location.GnssStatus;
+import android.location.GnssMeasurement;
+import android.location.GnssMeasurementsEvent;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.telephony.BarringInfo;
 
 import java.io.File;
@@ -53,6 +59,14 @@ public class RadioService extends Service {
     private final RadioRules.Watcher watcher = new RadioRules.Watcher();
     private CellObservatory observatory = new CellObservatory();
     private WifiObservatory wifiMem = new WifiObservatory();
+    private final GnssRules.Watcher gnssWatcher = new GnssRules.Watcher();
+    private volatile GnssStatus lastGnssStatus;
+    private volatile double lastAgcDb; private volatile boolean lastAgcKnown;
+    private volatile Location lastLocation; private volatile float lastSpeed = Float.NaN;
+    private LocationManager lm;
+    private GnssStatus.Callback gnssCb;
+    private GnssMeasurementsEvent.Callback measCb;
+    private LocationListener locListener;
     private int sinceSave;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TelephonyManager tm;
@@ -113,6 +127,9 @@ public class RadioService extends Service {
         running = false;
         handler.removeCallbacks(tick);
         try { if (callback != null) tm.unregisterTelephonyCallback(callback); } catch (Throwable ignored) { }
+        try { if (lm != null && gnssCb != null) lm.unregisterGnssStatusCallback(gnssCb); } catch (Throwable ignored) { }
+        try { if (lm != null && measCb != null) lm.unregisterGnssMeasurementsCallback(measCb); } catch (Throwable ignored) { }
+        try { if (lm != null && locListener != null) lm.removeUpdates(locListener); } catch (Throwable ignored) { }
         try { if (audioCallback != null) am.unregisterAudioDeviceCallback(audioCallback); } catch (Throwable ignored) { }
         saveObservatory();
         append("radio.log", stamp() + "  watch stopped after " + samples + " samples, "
@@ -179,6 +196,88 @@ public class RadioService extends Service {
         callback = new Cb();
         try { tm.registerTelephonyCallback(ex, callback); }
         catch (Throwable t) { append("radio.log", stamp() + "  could not attach to the radio: " + t); }
+
+        attachGnss(ex);
+    }
+
+    /** Listen to the satellites, for spoofing and jamming. Needs the same
+     *  location permission the cell watch already holds; off if it is not held. */
+    private void attachGnss(Executor ex) {
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) return;
+        lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (lm == null) return;
+        try {
+            gnssCb = new GnssStatus.Callback() {
+                @Override public void onSatelliteStatusChanged(GnssStatus st) { lastGnssStatus = st; }
+            };
+            lm.registerGnssStatusCallback(ex, gnssCb);
+
+            measCb = new GnssMeasurementsEvent.Callback() {
+                @Override public void onGnssMeasurementsReceived(GnssMeasurementsEvent e) {
+                    for (GnssMeasurement m : e.getMeasurements()) {
+                        if (m.hasAutomaticGainControlLevelDb()) {
+                            lastAgcDb = m.getAutomaticGainControlLevelDb();
+                            lastAgcKnown = true;
+                            break;
+                        }
+                    }
+                }
+            };
+            lm.registerGnssMeasurementsCallback(ex, measCb);
+
+            locListener = new LocationListener() {
+                @Override public void onLocationChanged(Location loc) {
+                    Location prev = lastLocation;
+                    if (prev != null) {
+                        float dist = prev.distanceTo(loc);
+                        float dt = (loc.getElapsedRealtimeNanos() - prev.getElapsedRealtimeNanos()) / 1e9f;
+                        lastSpeed = dt > 0.5f ? dist / dt
+                                  : (loc.hasSpeed() ? loc.getSpeed() : Float.NaN);
+                    }
+                    lastLocation = loc;
+                }
+            };
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, locListener, Looper.getMainLooper());
+        } catch (Throwable t) {
+            append("radio.log", stamp() + "  could not attach to GNSS: " + t);
+        }
+    }
+
+    private void sampleGnss(long t) {
+        GnssStatus st = lastGnssStatus;
+        if (st == null) return;
+        GnssRules.Snapshot snap = new GnssRules.Snapshot(t);
+        for (int i = 0; i < st.getSatelliteCount(); i++) {
+            GnssRules.Sat sat = new GnssRules.Sat();
+            sat.constellation = st.getConstellationType(i);
+            sat.svid = st.getSvid(i);
+            sat.cn0DbHz = st.getCn0DbHz(i);
+            sat.elevationDeg = st.getElevationDegrees(i);
+            sat.azimuthDeg = st.getAzimuthDegrees(i);
+            sat.usedInFix = st.usedInFix(i);
+            snap.sats.add(sat);
+        }
+        snap.hasAgc = lastAgcKnown; snap.agcDb = lastAgcDb;
+        Location loc = lastLocation;
+        if (loc != null) {
+            snap.hasFix = true;
+            snap.isMock = loc.isFromMockProvider();
+            snap.accuracyM = loc.getAccuracy();
+            if (loc.getElapsedRealtimeAgeMillis() > 15000) snap.hasFix = false;  // stale
+        }
+        snap.speedMps = lastSpeed;
+        for (GnssRules.Finding f : gnssWatcher.accept(snap)) {
+            if (f.posture) continue;
+            events++;
+            append("events.log", stamp() + "  [" + f.severity + "] " + f.title
+                    + "\n            " + f.detail + "\n");
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.notify((int) (t % 80000) + 30000,
+                    new Notification.Builder(this, CHANNEL).setContentTitle(f.title)
+                        .setStyle(new Notification.BigTextStyle().bigText(f.detail))
+                        .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
+        }
     }
 
     private void routeChanged(String how, AudioDeviceInfo[] changed) {
@@ -276,6 +375,7 @@ public class RadioService extends Service {
         List<RadioRules.Event> found = watcher.accept(s);
         append("radio.log", stamp() + "  " + line(s));
         scanWifi(s.t);
+        sampleGnss(s.t);
         for (RadioRules.Event e : found) {
             events++;
             append("events.log", stamp(e.t) + "  [" + e.severity + "] " + e.title
@@ -334,6 +434,7 @@ public class RadioService extends Service {
                 fillServing(s, id);
                 CellSignalStrength css = signalOf(ci);
                 if (css != null) s.rsrp = css.getDbm();
+                s.sinrDb = sinrOf(ci);
             } else {
                 int pci = pciOf(id);
                 if (pci >= 0) s.neighbours.add(pci);
@@ -381,6 +482,21 @@ public class RadioService extends Service {
         return RadioRules.NONE;
     }
 
+    /** Signal quality in dB, or MIN_VALUE when the modem did not report it. */
+    private static int sinrOf(CellInfo ci) {
+        try {
+            if (ci instanceof CellInfoNr) {
+                int v = ((CellSignalStrengthNr) ((CellInfoNr) ci).getCellSignalStrength()).getSsSinr();
+                return v == CellInfo.UNAVAILABLE ? Integer.MIN_VALUE : v;
+            }
+            if (ci instanceof CellInfoLte) {
+                int v = ((CellInfoLte) ci).getCellSignalStrength().getRssnr();
+                return v == CellInfo.UNAVAILABLE ? Integer.MIN_VALUE : v;
+            }
+        } catch (Throwable ignored) { }
+        return Integer.MIN_VALUE;
+    }
+
     private static CellSignalStrength signalOf(CellInfo ci) {
         if (ci instanceof CellInfoNr) return ((CellInfoNr) ci).getCellSignalStrength();
         if (ci instanceof CellInfoLte) return ((CellInfoLte) ci).getCellSignalStrength();
@@ -395,6 +511,7 @@ public class RadioService extends Service {
         return String.format(Locale.US, "%-6s %4ddBm %-12s cell=%-10d pci=%-4d tac=%-6d nbr=%d",
                 s.rat, s.rsrp, RadioRules.shortBand(s.band, s.downlinkKhz),
                 s.cid, s.pci, s.tac, s.neighbours.size())
+                + (s.sinrDb == Integer.MIN_VALUE ? "" : "  sinr=" + s.sinrDb)
                 + (s.barred.isEmpty() ? "" : "  barred=" + s.barred
                         + (s.barredUnconditional ? "(hard)" : ""))
                 + (s.btAudio ? "  bt=on" : "  bt=off") + (s.inCall ? "  call" : "");

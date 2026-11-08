@@ -13,7 +13,7 @@ Deleting the branch loses nothing else.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `b5fe1ba5587f87c04097b70ecf6c0d431cde89e8d75779b1ad2599f60378aa10`,
+`dist/sentinel.apk` — 29061 bytes, sha256 `313531568b2bb48927d2c3f4e99498c24a4fb2e9832cfef70777a7c2297478d1`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
@@ -35,6 +35,8 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e ObservatoryTests  # 8 tests, the cell memory
     java -cp /tmp/e WifiTests    # 12 tests, the evil-twin rules
     java -cp /tmp/e WifiEval 2000 # false positives and detection, synthetic Wi-Fi
+    java -cp /tmp/e GnssTests    # 9 tests, GPS spoofing and jamming
+    java -cp /tmp/e GnssEval     # false positives and detection, synthetic skies
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
@@ -197,6 +199,26 @@ strong signal, not an alarm, because a nearby copy is indistinguishable from a
 neighbour with the same name until you connect to it. A proxy set on the Wi-Fi
 link is a finding; encrypted DNS being off is a posture note. The Wi-Fi memory
 persists in the app's own space and never leaves the phone.
+
+## The satellites, seen from below
+
+Positioning infrastructure can spoof where a phone thinks it is; the phone sees
+its own satellites, and a spoofer gets things about them wrong that a real sky
+never does. The tells, strongest first: a location flagged as coming from a mock
+provider (software spoofing, definitive); a jump implying a speed nothing on the
+ground reaches; every satellite arriving at nearly the same strong signal, where
+a real sky spreads wide because satellites sit at different heights and ranges;
+and the whole band collapsing while the receiver's automatic gain control drops,
+which is a jammer flooding the band. The uniform-sky tell must hold across several
+fixes, because a real open sky can look uniform for one instant but not for ten
+seconds. Measured over 1.2 million synthetic fixes, open sky and urban canyon:
+zero false positives, with all four attack shapes caught 100% of the time.
+
+A cellular interference note rides the same idea one band over: a strong signal
+carrying poor quality (SINR below zero at a strong RSRP) means something is
+raising the noise floor. The common cause is a crowded area or an obstruction, so
+it is a note that explains a bad connection where the bars look fine, not an
+alarm.
 
 ## What it cannot see
 

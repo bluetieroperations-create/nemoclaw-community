@@ -53,6 +53,9 @@ public final class RadioRules {
         public int tac = -1, pci = -1, band = -1, arfcn = -1;
         public long cid = -1;
         public int rsrp = Integer.MIN_VALUE;
+        /** Signal quality in dB (SINR / RSSNR). Low quality at a strong signal is
+         *  the shape of interference - something raising the noise floor. */
+        public int sinrDb = Integer.MIN_VALUE;
         /** Downlink centre frequency in kHz, from PhysicalChannelConfig. */
         public int downlinkKhz = -1;
         /** Physical cell ids of the neighbours the modem reported. */
@@ -182,7 +185,7 @@ public final class RadioRules {
         private int samples;
 
         /** Consecutive samples a condition has held. Transients are not events. */
-        private int oldRatRun, noNeighbourRun, hardBarRun;
+        private int oldRatRun, noNeighbourRun, hardBarRun, interferenceRun;
         /** Whether neighbours were visible before the current empty run began. */
         private boolean hadNeighboursBefore;
         /** When the score first crossed the threshold, so corroboration can land. */
@@ -266,6 +269,13 @@ public final class RadioRules {
             oldRatRun = (oldRat && !s.inCall) ? oldRatRun + 1 : 0;
             boolean hardBar = s.barringKnown && s.barredUnconditional && !s.barred.isEmpty();
             hardBarRun = hardBar ? hardBarRun + 1 : 0;
+            // Interference: a strong signal carrying poor quality. A clear channel
+            // at -80 dBm has good SINR; something raising the noise floor - a
+            // jammer, a faulty transmitter, a crowded band - keeps the strength
+            // but wrecks the quality. Reported as a note, because the common cause
+            // is congestion or an obstruction, not an attack.
+            boolean interference = strong && s.sinrDb != Integer.MIN_VALUE && s.sinrDb < 0;
+            interferenceRun = interference ? interferenceRun + 1 : 0;
             if (s.neighbours.isEmpty()) {
                 if (noNeighbourRun == 0) {
                     // A real set must have vanished, not a lone sparse neighbour
@@ -386,6 +396,16 @@ public final class RadioRules {
             // requiring 2 keeps it purely additive.
             if (stranger && s.memoryReady && score >= 2) {
                 add(s, "unfamiliar", 1, "and this is a cell this phone has never seen before");
+            }
+
+            if (interferenceRun == sustain) {
+                out.add(new Event(s.t, "R11", "INFO", "Interference here: strong signal, poor quality",
+                        "The signal is strong (" + s.rsrp + " dBm) but its quality is poor (SINR "
+                        + s.sinrDb + " dB). That gap means something is raising the noise floor on "
+                        + "this band - most often a crowded area or an obstruction, sometimes a "
+                        + "faulty transmitter, and in rare cases a jammer. On its own it explains "
+                        + "a bad connection where the bars look fine; it is not evidence of an "
+                        + "attack. " + describe(s) + "."));
             }
 
             // Hold briefly once the threshold is crossed, so corroboration
