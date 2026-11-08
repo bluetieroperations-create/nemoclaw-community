@@ -13,7 +13,7 @@ Deleting the branch loses nothing else.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `3222269f383b1b433dc80cec1626e626f69be4d55bb58cb0803af7b7baa5458f`,
+`dist/sentinel.apk` — 29061 bytes, sha256 `7021088c25474974d82b2e1e5ca8ff9f5fc977116a4a4e398f0fdc3c665914b1`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
@@ -38,6 +38,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e GnssTests    # 9 tests, GPS spoofing and jamming
     java -cp /tmp/e GnssEval     # false positives and detection, synthetic skies
     java -cp /tmp/e SensorTests  # 12 tests, live sensor-access judgment
+    java -cp /tmp/e CorrelatorTests  # 10 tests, cross-signal coincidence
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
@@ -238,6 +239,24 @@ turns "what could spy on you" into "something just did, here is what and when".
 Two companions ride the on-demand scan: the Bluetooth devices paired to the
 phone, listed so an unfamiliar one stands out, and whether USB or wireless
 debugging is switched on, which is a standing way in for a computer.
+
+## The capstone: coincidence across the watches
+
+Each watch - cells, Wi-Fi, satellites, sensors, the clock - is tuned so that on
+ordinary days it says nothing, and that near-silence is what makes this last
+piece work. A targeted operation does not trip one watch; it trips several at
+once, because forcing a phone onto a fake cell, spoofing its position and turning
+on its microphone are things that happen together, in one place, in one minute.
+Any single finding can be a coincidence. Two or three independent watches firing
+inside the same few minutes is not. Because each almost never fires alone, two
+coinciding by chance is vanishingly unlikely, so the coincidence alert speaks
+only for the real thing, and it is the one alert in the whole app that is more
+than the sum of its parts.
+
+Fed into it, among the rest, is a clock check: the network sets the phone's time
+over NITZ and the satellites carry their own, and a wide disagreement is
+something a real network has no reason to cause and a fake cell does as a side
+effect.
 
 ## What it cannot see
 

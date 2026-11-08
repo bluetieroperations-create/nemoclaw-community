@@ -68,6 +68,7 @@ public class RadioService extends Service {
     private WifiObservatory wifiMem = new WifiObservatory();
     private final GnssRules.Watcher gnssWatcher = new GnssRules.Watcher();
     private final SensorRules.Watcher sensorWatcher = new SensorRules.Watcher();
+    private final Correlator correlator = new Correlator();
     private AppOpsManager appOps;
     private AppOpsManager.OnOpActiveChangedListener opListener;
     private volatile GnssStatus lastGnssStatus;
@@ -264,6 +265,7 @@ public class RadioService extends Service {
             events++;
             append("events.log", stamp() + "  [" + f.severity + "] " + f.title
                     + " (" + (f.pkg == null ? "?" : f.pkg) + ")\n            " + f.detail + "\n");
+            feedCorrelator(e.t, Correlator.Source.SENSOR, f.severity, "sensors: " + f.title);
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) nm.notify((int) (System.currentTimeMillis() % 70000) + 40000,
                     new Notification.Builder(this, CHANNEL).setContentTitle(f.title)
@@ -346,11 +348,27 @@ public class RadioService extends Service {
             if (loc.getElapsedRealtimeAgeMillis() > 15000) snap.hasFix = false;  // stale
         }
         snap.speedMps = lastSpeed;
+
+        // The clock check: the network sets time over NITZ; the satellites carry
+        // their own. A wide disagreement is a thing a fake cell does.
+        try {
+            long netMs = android.os.SystemClock.currentNetworkTimeClock().millis();
+            long gnssMs = android.os.SystemClock.currentGnssTimeClock().millis();
+            String skew = Correlator.judgeTimeSkew(netMs, gnssMs);
+            if (skew != null) {
+                events++;
+                append("events.log", stamp() + "  [MEDIUM] Network clock disagrees with satellites"
+                        + "\n            " + skew + "\n");
+                feedCorrelator(t, Correlator.Source.TIME, "MEDIUM", "clock: network time is wrong");
+            }
+        } catch (Throwable ignored) { }
+
         for (GnssRules.Finding f : gnssWatcher.accept(snap)) {
             if (f.posture) continue;
             events++;
             append("events.log", stamp() + "  [" + f.severity + "] " + f.title
                     + "\n            " + f.detail + "\n");
+            feedCorrelator(t, Correlator.Source.GNSS, f.severity, "satellites: " + f.title);
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) nm.notify((int) (t % 80000) + 30000,
                     new Notification.Builder(this, CHANNEL).setContentTitle(f.title)
@@ -459,7 +477,10 @@ public class RadioService extends Service {
             events++;
             append("events.log", stamp(e.t) + "  [" + e.severity + "] " + e.title
                     + "\n            " + e.detail + "\n");
-            if (!"INFO".equals(e.severity)) alert(e);
+            if (!"INFO".equals(e.severity)) {
+                alert(e);
+                feedCorrelator(e.t, Correlator.Source.CELL, e.severity, "cells: " + e.title);
+            }
         }
         updateNote(s);
     }
@@ -661,7 +682,27 @@ public class RadioService extends Service {
                     + f.title + (f.ssid == null ? "" : " (" + f.ssid + ")")
                     + "\n            " + f.detail + "\n");
             alertWifi(f);
+            feedCorrelator(scan.t, Correlator.Source.WIFI, f.severity, "Wi-Fi: " + f.title);
         }
+    }
+
+    /**
+     * Feed one real finding into the correlator and, if several independent
+     * watches have now fired together, raise the coincidence alert. This is the
+     * capstone: no single watch here cries wolf, so when two or three speak in
+     * one short window, the combination is worth more than its parts.
+     */
+    private void feedCorrelator(long t, Correlator.Source src, String severity, String label) {
+        Correlator.Meta m = correlator.accept(t, src, severity, label);
+        if (m == null) return;
+        events++;
+        append("events.log", stamp() + "  [" + m.severity + "] " + m.title
+                + "\n            " + m.detail + "\n");
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) nm.notify(50000,
+                new Notification.Builder(this, CHANNEL).setContentTitle(m.title)
+                    .setStyle(new Notification.BigTextStyle().bigText(m.detail))
+                    .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
     }
 
     private void alertWifi(WifiRules.Finding f) {
