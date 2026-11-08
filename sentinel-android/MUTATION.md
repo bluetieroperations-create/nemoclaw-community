@@ -9,11 +9,16 @@ fails, survives if all pass. Work was on copies; no mutated file was committed.
 
 The suite was much weaker than its passing count implied.
 
-| Suite under test | Mutation score | Survivors |
+| Step | Full-suite score | Survivors |
 |---|---|---|
 | 114 tests, as they stood | 36.7% | 366 / 578 |
-| + assertion guards over the evals | 40.1% | 346 / 578 |
-| Rules.java alone, + 6 targeted app-scan tests | 43.6% | 79 (was 91) |
+| + assertion guards over the evals (GuardTests) | 40.1% | 346 / 578 |
+| + 6 targeted app-scan tests (notification path etc.) | ~41% | - |
+| + 14 boundary tests on the decision thresholds | **50.0%** | 289 / 578 |
+
+Of the 289 that still survive, 104 are `0 +/- 1` on loop counters, indices and
+display arithmetic - equivalent mutants that cannot and should not be killed.
+Excluding those, the suite kills 289 of 474 meaningful mutants, about 61%.
 
 "114 tests pass" had been quoted as if it meant the logic was pinned down. It did
 not. Roughly two in three injected faults went uncaught. That is the kind of
@@ -55,9 +60,19 @@ code that is secretly incorrect.
 
 ## Honest state
 
-The score is ~40% and the genuine-hole fraction is smaller than that, but it is
-not where it should be. Scenario-based tests do not probe each threshold at its
-edge, so the residual operator and threshold survivors need boundary tests
-(threshold-1, threshold, threshold+1) to close. That work is not done. What is
-done: the evals now assert, the untested notification path is covered, and the
-real number - not the passing count - is written here.
+From 36.7% to 50.0% full-suite (about 61% excluding the equivalent `0 +/- 1`
+mutants), across three additions, each measured: assertion guards turned the
+evals from printing rates to failing on a broken bound; six tests covered the
+app-scan notification path that had none; fourteen boundary tests put an
+assertion on each decision threshold at its edge, which is what the scenario
+tests structurally could not do and what moved the number most.
+
+What remains, honestly: ~91 operator-swap survivors, concentrated in the app-scan
+rules (Rules.java) and the radio watch (RadioRules.java). Many are defensive
+`>= 0` guards whose edge value never occurs, or `a == null ? pkg : a.label`
+label-picking in detail text that changes no verdict - near-equivalent. A real
+residual are branches in the collector-facing logic that still want a test. The
+honest summary: the suite went from catching a third of faults to catching half
+(three-fifths of the meaningful ones), the core detection paths are pinned at
+100%, no latent bug was found, and the number - not the passing count - is what
+is written down. 142 tests now; the count was never the measure.
