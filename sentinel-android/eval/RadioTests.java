@@ -25,6 +25,10 @@ public class RadioTests {
         manyCellsChangingIsAReplan();
         foreignNetworkWithoutRoamingScores();
         alertsHaveACooldown();
+        ordinaryBarringAloneIsNotAnAlert();
+        unconditionalBarringPlusDowngradeAlerts();
+        emergencyBarringIsSaidOnItsOwn();
+        weakSignalBarringIsCongestion();
         bluetoothDropAfterCrowdingBandIsExplained();
         bluetoothDropAfterCleanBandIsNotBlamedOnIt();
         bluetoothDropWithNoBandChangeSaysSo();
@@ -178,6 +182,62 @@ public class RadioTests {
         int n = 0;
         for (Event e : ev) if (e.id.equals("R01")) n++;
         check("one episode produces one alert, not forty", n == 1);
+    }
+
+    static void ordinaryBarringAloneIsNotAnAlert() {
+        // A congested tower bars constantly. On its own that must stay quiet.
+        Watcher w = new Watcher();
+        List<Sample> run = new ArrayList<>();
+        for (int i = 0; i < 3; i++) run.add(normal(i));
+        for (int i = 3; i < 16; i++) {
+            Sample s = loud(i, 3, RadioRules.NR_SA);   // strong, neighbours present, modern
+            s.barringKnown = true;
+            s.barred.add("data");                       // conditional data bar
+            run.add(s);
+        }
+        check("ordinary barring on its own does not raise an alert", !any(feed(w, run), "R01"));
+    }
+
+    static void unconditionalBarringPlusDowngradeAlerts() {
+        // A hard data bar AND a strong-signal 3G downgrade together is the shape.
+        Watcher w = new Watcher();
+        List<Sample> run = new ArrayList<>();
+        for (int i = 0; i < 3; i++) run.add(normal(i));
+        for (int i = 3; i < 16; i++) {
+            Sample s = loud(i, 0, RadioRules.UMTS);     // strong 3G = oldrat(3)
+            s.barringKnown = true;
+            s.barred.add("data");
+            s.barredUnconditional = true;                // barred(3)
+            run.add(s);
+        }
+        check("unconditional barring plus a strong-signal downgrade alerts",
+                any(feed(w, run), "R01"));
+    }
+
+    static void emergencyBarringIsSaidOnItsOwn() {
+        Watcher w = new Watcher();
+        List<Sample> run = new ArrayList<>();
+        for (int i = 0; i < 3; i++) run.add(normal(i));
+        Sample s = normal(3);
+        s.barringKnown = true; s.barredEmergency = true;
+        run.add(s);
+        check("emergency-call barring is reported on its own", any(feed(w, run), "R10"));
+    }
+
+    static void weakSignalBarringIsCongestion() {
+        // Barring with a weak signal is a loaded distant tower, not herding.
+        Watcher w = new Watcher();
+        List<Sample> run = new ArrayList<>();
+        for (int i = 0; i < 3; i++) run.add(at(i, RadioRules.LTE, -112, 2));
+        for (int i = 3; i < 16; i++) {
+            Sample s = at(i, RadioRules.LTE, -112, 2);   // weak
+            s.barringKnown = true;
+            s.barred.add("data");
+            s.barredUnconditional = true;
+            run.add(s);
+        }
+        check("barring at a weak signal is treated as congestion, not a finding",
+                !any(feed(w, run), "R01"));
     }
 
     static void bluetoothDropAfterCrowdingBandIsExplained() {

@@ -13,7 +13,7 @@ Deleting the branch loses nothing else.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `f42a56c8b16d33c0f6c92142d5541119d90b9034da41acd76ed84fad3b86b664`,
+`dist/sentinel.apk` — 29061 bytes, sha256 `09f290ca6f5540f17ce303e9735d88826dc8e9ba81cab05a99a534719dab2ce2`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
@@ -31,7 +31,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
 
     javac -d /tmp/e src/com/bluetier/sentinel/Rules.java eval/Tests.java eval/Eval.java
     java -cp /tmp/e Tests        # 30 regression tests, the installed-software rules
-    java -cp /tmp/e RadioTests   # 18 regression tests, the radio rules
+    java -cp /tmp/e RadioTests   # 22 regression tests, the radio rules
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
@@ -107,7 +107,21 @@ about 2,000 trips to unfamiliar routes and roughly 35 carrier re-plans:
 | A wholly new cell | 79% |
 
 The first is the realistic case, because equipment that wants phones to attach
-to it imitates the network already there. The second is harder and the number is
+to it imitates the network already there.
+
+A fourth indicator reads cell barring, which is the handset-side view of what a
+carrier's own console labels "site locked or barred": a cell broadcasts that it
+is turning certain services away, and `BarringInfo` reports which and whether the
+bar is hard (unconditional) or a probability (conditional). Networks bar for
+congestion constantly, so a bar on its own is never an alert; a conditional bar
+never scores at all, and a hard bar counts toward the combination only once it
+has held for several samples at a strong signal, because a congested tower bars
+in flickers while a cell herding phones bars steadily. Two cases are reported on
+their own: a bar on emergency calling, which a normal network almost never does
+and which is a safety fact worth knowing wherever it appears; and, through the
+combination, a sustained hard bar at a strong signal. Measured against the same
+synthetic drives with ordinary congestion barring mixed in, this left the
+false-positive rate at zero. The second is harder and the number is
 lower; it is reported as it measured.
 
 Six defects surfaced only because this was measured rather than reasoned about.

@@ -116,13 +116,23 @@ public class DriveEval {
 
             if (coverage < 14 && r.nextInt(60) == 0) s.registrationFailCause = 17;
 
+            // Real networks bar for congestion, most often a conditional data bar
+            // on a busy urban cell. This is the false-positive pressure the
+            // barring rule has to survive: common, ordinary, and not an attack.
+            s.barringKnown = true;
+            if (!rural && r.nextInt(12) == 0) {
+                s.barred.add("data");
+                if (r.nextInt(10) == 0) s.barredUnconditional = true;  // occasional hard bar
+            }
+
             // The fake cell: close, loud, alone, and dragging the phone backwards.
             if (attack > 0 && i >= 140 && i < 165) {
                 s.inCall = false;
                 s.rsrp = -64 + r.nextInt(6);
                 s.neighbours.clear();
                 s.rat = i > 146 ? RadioRules.UMTS : RadioRules.LTE;
-                if (attack == 1) { s.cid = c.cid; s.tac = 9999; }   // reuses a known cell id
+                if (attack == 1) { s.cid = c.cid; s.tac = 9999;
+                                   s.barred.add("data"); s.barredUnconditional = true; }
                 else            { s.cid = 888888L; s.pci = 501; s.tac = 9999; }  // wholly new
             }
             if (PROBE != null) PROBE.at(i, s);

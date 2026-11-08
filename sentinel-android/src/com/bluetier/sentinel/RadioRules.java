@@ -67,6 +67,20 @@ public final class RadioRules {
         public boolean inCall;
         /** Set when the modem reported a registration failure at this moment. */
         public Integer registrationFailCause;
+        /**
+         * Services the serving cell is barring, by plain name ("data", "voice").
+         * This is the handset-side view of what an operator console calls "site
+         * locked or barred": a cell broadcasts that it is turning certain
+         * services away. Empty means none barred OR the modem did not report it;
+         * barringKnown tells those apart.
+         */
+        public final Set<String> barred = new TreeSet<>();
+        /** True when at least one bar is unconditional (a hard bar, not a probability). */
+        public boolean barredUnconditional;
+        /** True when emergency calling is among the barred services. */
+        public boolean barredEmergency;
+        /** True when the modem reported barring info at all. False is unknown, not "none". */
+        public boolean barringKnown;
 
         public Sample(long t) { this.t = t; }
 
@@ -146,7 +160,7 @@ public final class RadioRules {
         private int samples;
 
         /** Consecutive samples a condition has held. Transients are not events. */
-        private int oldRatRun, noNeighbourRun;
+        private int oldRatRun, noNeighbourRun, hardBarRun;
         /** Whether neighbours were visible before the current empty run began. */
         private boolean hadNeighboursBefore;
         /** When the score first crossed the threshold, so corroboration can land. */
@@ -211,6 +225,8 @@ public final class RadioRules {
             boolean strong = s.rsrp > strongDbm;
             boolean oldRat = rank(s.rat) >= 0 && rank(s.rat) <= rank(UMTS);
             oldRatRun = (oldRat && !s.inCall) ? oldRatRun + 1 : 0;
+            boolean hardBar = s.barringKnown && s.barredUnconditional && !s.barred.isEmpty();
+            hardBarRun = hardBar ? hardBarRun + 1 : 0;
             if (s.neighbours.isEmpty()) {
                 if (noNeighbourRun == 0) {
                     hadNeighboursBefore = prev != null && !prev.neighbours.isEmpty();
@@ -279,6 +295,35 @@ public final class RadioRules {
             if (s.registrationFailCause != null && strong) {
                 add(s, "regfail", 2, "the network refused to register this phone (cause "
                         + s.registrationFailCause + ") despite a strong signal");
+            }
+
+            // Barring - the handset-side reflection of "site locked or barred".
+            // Networks bar for congestion all the time, so an ordinary bar is not
+            // news and only counts toward the combination above, scored low. Two
+            // cases are said on their own. Emergency barring, because a legitimate
+            // network almost never bars emergency calls and it is a safety fact
+            // worth knowing wherever it appears. And an unconditional bar of data
+            // or signalling while the signal is strong, which is the shape of a
+            // cell herding phones rather than one shedding load - a congested
+            // tower is usually weak-signalled and bars conditionally, with a
+            // probability and a timer, not with a hard no.
+            if (s.barredEmergency) {
+                out.add(new Event(s.t, "R10", "MEDIUM", "This cell is barring emergency calls",
+                        "The serving cell is advertising a bar on emergency calling. A normal "
+                        + "network almost never does this. It can happen during a genuine "
+                        + "fault, but it means an emergency call might not connect from here, "
+                        + "so it is worth knowing wherever you see it. " + describe(s) + "."));
+            }
+            // A conditional bar carries a probability and a timer - it is load
+            // management by design, so it never scores. A hard bar scores only
+            // once it has held for a few samples at a strong signal: congestion
+            // bars flicker as load shifts, a cell herding phones bars steadily.
+            if (hardBarRun == sustain && strong) {
+                add(s, "barred", 2, "the cell has been barring "
+                        + join(new ArrayList<>(s.barred))
+                        + " unconditionally for several samples at " + s.rsrp
+                        + " dBm, which is a strong signal for a cell steadily turning "
+                        + "service away rather than shedding load");
             }
 
             // Hold briefly once the threshold is crossed, so corroboration

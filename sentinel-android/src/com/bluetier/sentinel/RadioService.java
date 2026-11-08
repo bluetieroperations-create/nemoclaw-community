@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.telephony.*;
+import android.telephony.BarringInfo;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -59,6 +60,7 @@ public class RadioService extends Service {
     private volatile int lastBand = -1, lastKhz = -1;
     private volatile String lastRat;
     private volatile Integer pendingRegFail;
+    private volatile android.telephony.BarringInfo latestBarring;
     private volatile int events, samples;
 
     @Override public IBinder onBind(Intent i) { return null; }
@@ -123,7 +125,8 @@ public class RadioService extends Service {
                 TelephonyCallback.PhysicalChannelConfigListener,
                 TelephonyCallback.RegistrationFailedListener,
                 TelephonyCallback.CallStateListener,
-                TelephonyCallback.DisplayInfoListener {
+                TelephonyCallback.DisplayInfoListener,
+                TelephonyCallback.BarringInfoListener {
 
             @Override public void onServiceStateChanged(ServiceState s) { serviceState = s; }
             @Override public void onSignalStrengthsChanged(SignalStrength s) { signalStrength = s; }
@@ -133,6 +136,9 @@ public class RadioService extends Service {
             @Override public void onRegistrationFailed(CellIdentity id, String plmn,
                                                        int domain, int cause, int addl) {
                 pendingRegFail = cause;
+            }
+            @Override public void onBarringInfoChanged(BarringInfo info) {
+                latestBarring = info;
             }
             @Override public void onCallStateChanged(int state) {
                 inCall = state != TelephonyManager.CALL_STATE_IDLE;
@@ -235,6 +241,8 @@ public class RadioService extends Service {
             try { readCells(s); } catch (Throwable ignored) { }
         }
 
+        readBarring(s);
+
         lastBand = s.band; lastKhz = s.downlinkKhz; lastRat = s.rat;
         samples++;
         List<RadioRules.Event> found = watcher.accept(s);
@@ -246,6 +254,45 @@ public class RadioService extends Service {
             if (!"INFO".equals(e.severity)) alert(e);
         }
         updateNote(s);
+    }
+
+    /**
+     * The handset-side view of "site locked or barred".
+     *
+     * BarringInfo is only populated when the modem reports it, which not every
+     * build or network does, so barringKnown records whether we got an answer at
+     * all - an empty report is unknown, never "nothing barred".
+     */
+    private void readBarring(RadioRules.Sample s) {
+        BarringInfo bi = latestBarring;
+        if (bi == null) return;
+        s.barringKnown = true;
+        int[][] svc = {
+            {BarringInfo.BARRING_SERVICE_TYPE_MO_DATA, 0},
+            {BarringInfo.BARRING_SERVICE_TYPE_MO_SIGNALLING, 1},
+            {BarringInfo.BARRING_SERVICE_TYPE_MMTEL_VOICE, 2},
+            {BarringInfo.BARRING_SERVICE_TYPE_MMTEL_VIDEO, 3},
+            {BarringInfo.BARRING_SERVICE_TYPE_SMS, 4},
+            {BarringInfo.BARRING_SERVICE_TYPE_CS_VOICE, 5},
+            {BarringInfo.BARRING_SERVICE_TYPE_PS_SERVICE, 6},
+        };
+        String[] names = {"data", "signalling", "voice", "video", "SMS", "voice", "packet service"};
+        for (int[] pair : svc) {
+            try {
+                BarringInfo.BarringServiceInfo info = bi.getBarringServiceInfo(pair[0]);
+                if (info != null && info.isBarred()) {
+                    s.barred.add(names[pair[1]]);
+                    if (info.getBarringType() == BarringInfo.BarringServiceInfo.BARRING_TYPE_UNCONDITIONAL) {
+                        s.barredUnconditional = true;
+                    }
+                }
+            } catch (Throwable ignored) { }
+        }
+        try {
+            BarringInfo.BarringServiceInfo em =
+                    bi.getBarringServiceInfo(BarringInfo.BARRING_SERVICE_TYPE_EMERGENCY);
+            if (em != null && em.isBarred()) s.barredEmergency = true;
+        } catch (Throwable ignored) { }
     }
 
     private void readCells(RadioRules.Sample s) {
@@ -319,6 +366,8 @@ public class RadioService extends Service {
         return String.format(Locale.US, "%-6s %4ddBm %-12s cell=%-10d pci=%-4d tac=%-6d nbr=%d",
                 s.rat, s.rsrp, RadioRules.shortBand(s.band, s.downlinkKhz),
                 s.cid, s.pci, s.tac, s.neighbours.size())
+                + (s.barred.isEmpty() ? "" : "  barred=" + s.barred
+                        + (s.barredUnconditional ? "(hard)" : ""))
                 + (s.btAudio ? "  bt=on" : "  bt=off") + (s.inCall ? "  call" : "");
     }
 
