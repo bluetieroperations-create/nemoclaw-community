@@ -12,6 +12,12 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.telephony.*;
+import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.Network;
+import android.net.wifi.ScanResult;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.telephony.BarringInfo;
 
 import java.io.File;
@@ -46,6 +52,7 @@ public class RadioService extends Service {
 
     private final RadioRules.Watcher watcher = new RadioRules.Watcher();
     private CellObservatory observatory = new CellObservatory();
+    private WifiObservatory wifiMem = new WifiObservatory();
     private int sinceSave;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TelephonyManager tm;
@@ -75,6 +82,11 @@ public class RadioService extends Service {
             if (f.isFile()) {
                 byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
                 observatory = CellObservatory.load(new String(b, java.nio.charset.StandardCharsets.UTF_8));
+            }
+            java.io.File wf = new java.io.File(logDir(), "wifi-observatory.tsv");
+            if (wf.isFile()) {
+                byte[] b = java.nio.file.Files.readAllBytes(wf.toPath());
+                wifiMem = WifiObservatory.load(new String(b, java.nio.charset.StandardCharsets.UTF_8));
             }
         } catch (Throwable ignored) { }
         am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
@@ -263,6 +275,7 @@ public class RadioService extends Service {
         samples++;
         List<RadioRules.Event> found = watcher.accept(s);
         append("radio.log", stamp() + "  " + line(s));
+        scanWifi(s.t);
         for (RadioRules.Event e : found) {
             events++;
             append("events.log", stamp(e.t) + "  [" + e.severity + "] " + e.title
@@ -396,9 +409,82 @@ public class RadioService extends Service {
      * plain cat. It still needs no storage permission and is still removed when
      * the app is uninstalled.
      */
+    /**
+     * The Wi-Fi world from below: every access point in range, the one this phone
+     * is joined to, and the link's proxy and DNS configuration. Scan results are
+     * gated behind location permission (already held for cell identity) and the
+     * system refreshes them on its own schedule, so this reads the cache rather
+     * than forcing a throttled scan.
+     */
+    private void scanWifi(long t) {
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) return;
+        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (wm == null) return;
+        WifiRules.Scan scan = new WifiRules.Scan(t);
+        String connectedBssid = null;
+        try {
+            WifiInfo info = wm.getConnectionInfo();
+            if (info != null && info.getBSSID() != null) connectedBssid = info.getBSSID();
+        } catch (Throwable ignored) { }
+        List<ScanResult> results;
+        try { results = wm.getScanResults(); } catch (Throwable t2) { return; }
+        if (results == null) return;
+        for (ScanResult sr : results) {
+            WifiRules.Ap ap = new WifiRules.Ap();
+            ap.ssid = sr.SSID == null ? "" : sr.SSID;
+            ap.bssid = sr.BSSID == null ? "" : sr.BSSID;
+            ap.freqMhz = sr.frequency;
+            ap.level = sr.level;
+            ap.sec = WifiRules.parseSecurity(sr.capabilities);
+            ap.connected = connectedBssid != null && connectedBssid.equalsIgnoreCase(ap.bssid);
+            scan.aps.add(ap);
+        }
+        if (scan.aps.isEmpty()) return;
+
+        try {
+            ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+            Network net = cm == null ? null : cm.getActiveNetwork();
+            LinkProperties lp = net == null ? null : cm.getLinkProperties(net);
+            if (lp != null) {
+                if (lp.getHttpProxy() != null && lp.getHttpProxy().getHost() != null) {
+                    scan.proxyHost = lp.getHttpProxy().getHost();
+                    scan.proxyPort = lp.getHttpProxy().getPort();
+                }
+                scan.privateDnsActive = lp.isPrivateDnsActive();
+                if (lp.getPrivateDnsServerName() != null) scan.privateDnsName = lp.getPrivateDnsServerName();
+            }
+        } catch (Throwable ignored) { }
+
+        List<WifiRules.Finding> wf = WifiRules.evaluate(scan, wifiMem);
+        wifiMem.observeScan(scan);
+        for (WifiRules.Finding f : wf) {
+            if (f.posture) continue;   // notes live in the log, not as alerts
+            events++;
+            append("events.log", stamp() + "  [" + f.severity + "] "
+                    + f.title + (f.ssid == null ? "" : " (" + f.ssid + ")")
+                    + "\n            " + f.detail + "\n");
+            alertWifi(f);
+        }
+    }
+
+    private void alertWifi(WifiRules.Finding f) {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        nm.notify((int) (System.currentTimeMillis() % 90000) + 20000,
+                new Notification.Builder(this, CHANNEL)
+                    .setContentTitle(f.title)
+                    .setStyle(new Notification.BigTextStyle().bigText(f.detail))
+                    .setSmallIcon(android.R.drawable.stat_sys_warning)
+                    .setAutoCancel(true).build());
+    }
+
     private void saveObservatory() {
         try (FileWriter w = new FileWriter(new File(logDir(), "observatory.tsv"))) {
             w.write(observatory.save());
+        } catch (Throwable ignored) { }
+        try (FileWriter w = new FileWriter(new File(logDir(), "wifi-observatory.tsv"))) {
+            w.write(wifiMem.save());
         } catch (Throwable ignored) { }
     }
 
