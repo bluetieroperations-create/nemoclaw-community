@@ -45,6 +45,8 @@ public class RadioService extends Service {
     public static boolean isRunning() { return running; }
 
     private final RadioRules.Watcher watcher = new RadioRules.Watcher();
+    private CellObservatory observatory = new CellObservatory();
+    private int sinceSave;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TelephonyManager tm;
     private AudioManager am;
@@ -68,6 +70,13 @@ public class RadioService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         tm = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+        try {
+            java.io.File f = new java.io.File(logDir(), "observatory.tsv");
+            if (f.isFile()) {
+                byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
+                observatory = CellObservatory.load(new String(b, java.nio.charset.StandardCharsets.UTF_8));
+            }
+        } catch (Throwable ignored) { }
         am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm != null) {
@@ -93,8 +102,9 @@ public class RadioService extends Service {
         handler.removeCallbacks(tick);
         try { if (callback != null) tm.unregisterTelephonyCallback(callback); } catch (Throwable ignored) { }
         try { if (audioCallback != null) am.unregisterAudioDeviceCallback(audioCallback); } catch (Throwable ignored) { }
+        saveObservatory();
         append("radio.log", stamp() + "  watch stopped after " + samples + " samples, "
-                + events + " event(s)");
+                + events + " event(s); observatory holds " + observatory.size() + " cells");
         super.onDestroy();
     }
 
@@ -244,6 +254,12 @@ public class RadioService extends Service {
         readBarring(s);
 
         lastBand = s.band; lastKhz = s.downlinkKhz; lastRat = s.rat;
+        // The from-below memory: how well this phone already knows the serving
+        // cell. observe() folds the sample in and returns what was known before
+        // it, so the cell's own first sighting does not read as a stranger.
+        s.familiarity = observatory.observe(s);
+        s.memoryReady = observatory.establishedBaseline();
+        if (++sinceSave >= 20) { sinceSave = 0; saveObservatory(); }
         samples++;
         List<RadioRules.Event> found = watcher.accept(s);
         append("radio.log", stamp() + "  " + line(s));
@@ -380,6 +396,12 @@ public class RadioService extends Service {
      * plain cat. It still needs no storage permission and is still removed when
      * the app is uninstalled.
      */
+    private void saveObservatory() {
+        try (FileWriter w = new FileWriter(new File(logDir(), "observatory.tsv"))) {
+            w.write(observatory.save());
+        } catch (Throwable ignored) { }
+    }
+
     private File logDir() {
         File ext = getExternalFilesDir(null);
         return ext != null ? ext : getFilesDir();

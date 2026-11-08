@@ -1,6 +1,7 @@
 import com.bluetier.sentinel.RadioRules;
 import com.bluetier.sentinel.RadioRules.*;
 
+import com.bluetier.sentinel.CellObservatory;
 import java.util.*;
 
 /**
@@ -61,6 +62,10 @@ public class DriveEval {
 
     public static List<Event> commute(Watcher w, Random r, long t0, boolean rural,
                                List<Cell> cells, int attack) {
+        return commute(w, r, t0, rural, cells, attack, new CellObservatory());
+    }
+    public static List<Event> commute(Watcher w, Random r, long t0, boolean rural,
+                               List<Cell> cells, int attack, CellObservatory obs) {
         List<Event> events = new ArrayList<>();
         int band = URBAN_BANDS[0];
         String rat = rural ? RadioRules.LTE : RadioRules.NR_SA;
@@ -136,6 +141,9 @@ public class DriveEval {
                 else            { s.cid = 888888L; s.pci = 501; s.tac = 9999; }  // wholly new
             }
             if (PROBE != null) PROBE.at(i, s);
+            // The phone's memory, as it would really build over a commute.
+            s.familiarity = obs.observe(s);
+            s.memoryReady = obs.establishedBaseline();
             events.addAll(w.accept(s));
         }
         return events;
@@ -156,16 +164,14 @@ public class DriveEval {
                 int trips = 0, replans = 0;
                 for (int d = 0; d < drivers; d++) {
                     Watcher w = new Watcher();
+                    CellObservatory obs = new CellObservatory();   // this driver's memory
                     List<Cell> home = route(rural, r);
                     boolean accused = false;
                     for (int day = 0; day < days; day++) {
                         List<Cell> today = home;
-                        // One day in five is a trip somewhere unfamiliar: cells and
-                        // tracking areas this phone has never seen.
                         if (r.nextInt(5) == 0) { today = route(rural, r); trips++; }
-                        // Once in a long while the carrier re-plans the home area.
                         else if (r.nextInt(200) == 0) { home = replan(home, r); today = home; replans++; }
-                        for (Event e : commute(w, r, day * 86400000L, rural, today, 0)) {
+                        for (Event e : commute(w, r, day * 86400000L, rural, today, 0, obs)) {
                             if (e.severity.equals("INFO")) { infos++; continue; }
                             alerts++; accused = true;
                         }
@@ -190,10 +196,11 @@ public class DriveEval {
             int caught = 0, high = 0, runs = 2000;
             for (int d = 0; d < runs; d++) {
                 Watcher w = new Watcher();
+                CellObservatory obs = new CellObservatory();
                 List<Cell> cells = route(false, r);
-                for (int day = 0; day < 20; day++) commute(w, r, day * 86400000L, false, cells, 0);
+                for (int day = 0; day < 20; day++) commute(w, r, day * 86400000L, false, cells, 0, obs);
                 boolean hit = false, hi = false;
-                for (Event e : commute(w, r, 20 * 86400000L, false, cells, attack)) {
+                for (Event e : commute(w, r, 20 * 86400000L, false, cells, attack, obs)) {
                     if (e.severity.equals("INFO")) continue;
                     hit = true;
                     if (e.severity.equals("HIGH")) hi = true;

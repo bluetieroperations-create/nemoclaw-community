@@ -81,6 +81,20 @@ public final class RadioRules {
         public boolean barredEmergency;
         /** True when the modem reported barring info at all. False is unknown, not "none". */
         public boolean barringKnown;
+        /**
+         * How well this phone already knows the serving cell, from the persistent
+         * observatory. UNKNOWN when there is no memory yet. An anchor cell's odd
+         * behaviour is discounted as congestion; a stranger's is corroborated.
+         */
+        public CellObservatory.Familiarity familiarity = CellObservatory.Familiarity.UNKNOWN;
+        /**
+         * True once the observatory has learned enough of this phone's normal
+         * cells that "never seen before" is a meaningful statement. Until then,
+         * UNKNOWN means "no baseline yet", not "stranger", and does not score -
+         * a fresh install must not treat every cell on its first drive as
+         * suspect.
+         */
+        public boolean memoryReady;
 
         public Sample(long t) { this.t = t; }
 
@@ -155,6 +169,14 @@ public final class RadioRules {
         private final Map<Long, Integer> cellTac = new HashMap<>();
         /** Recent tracking-area changes, by cell, for telling a re-plan from a fake. */
         private final Map<Long, Long> tacChangedAt = new LinkedHashMap<>();
+        /**
+         * Cells that have claimed a different tracking area than memory held.
+         * Once a cell does this it stays distrusted for the rest of the session:
+         * a cell that lied about its identity once does not earn the anchor's
+         * discount back by then lying consistently, which is exactly how the
+         * first version let a clone re-trust itself one sample after being caught.
+         */
+        private final Set<Long> identityBroken = new HashSet<>();
         private long replanNotedAt = Long.MIN_VALUE;
         private Sample previous;
         private int samples;
@@ -223,13 +245,34 @@ public final class RadioRules {
             }
 
             boolean strong = s.rsrp > strongDbm;
+            // Memory changes what the same reading means. A tower you have stood
+            // under for weeks shedding load is congestion; a cell you have never
+            // seen doing the same thing is the stranger worth flagging. Hard
+            // identity signals (a cell changing its tracking area, a foreign PLMN)
+            // still count on any cell - those are not things a familiar tower does.
+            boolean anchor = s.familiarity == CellObservatory.Familiarity.ANCHOR;
+            boolean stranger = s.familiarity == CellObservatory.Familiarity.UNKNOWN;
+            // A cell that reuses a known id but claims a different tracking area is
+            // wearing that cell's name, not being it. The moment memory and the
+            // broadcast identity disagree, the anchor's trust is void - otherwise
+            // cloning a familiar cell's id would be the way to inherit the very
+            // discount meant to quiet that cell's ordinary congestion.
+            Integer rememberedTac = (s.cid >= 0) ? cellTac.get(s.cid) : null;
+            if (rememberedTac != null && s.tac >= 0 && rememberedTac != s.tac) {
+                identityBroken.add(s.cid);
+            }
+            boolean trusted = anchor && !(s.cid >= 0 && identityBroken.contains(s.cid));
             boolean oldRat = rank(s.rat) >= 0 && rank(s.rat) <= rank(UMTS);
             oldRatRun = (oldRat && !s.inCall) ? oldRatRun + 1 : 0;
             boolean hardBar = s.barringKnown && s.barredUnconditional && !s.barred.isEmpty();
             hardBarRun = hardBar ? hardBarRun + 1 : 0;
             if (s.neighbours.isEmpty()) {
                 if (noNeighbourRun == 0) {
-                    hadNeighboursBefore = prev != null && !prev.neighbours.isEmpty();
+                    // A real set must have vanished, not a lone sparse neighbour
+                    // flickering off. Rural cells bounce between 0 and 2
+                    // neighbours as ordinary noise; equipment clears a full list.
+                    // Requiring several separates the signal from the sparsity.
+                    hadNeighboursBefore = prev != null && prev.neighbours.size() >= 3;
                 }
                 noNeighbourRun++;
             } else {
@@ -264,6 +307,13 @@ public final class RadioRules {
                                     + "to time."));
                         }
                     } else {
+                        // Flat weight. A known cell changing its area is caught not
+                        // by scoring the change higher - that would fire on the
+                        // first cell of a carrier re-plan before the mass-replan
+                        // test can see the rest - but by the trust revocation above,
+                        // which lets the impersonator's other tells (strong signal,
+                        // no neighbours, a hard bar) score where an anchor's would
+                        // have been discounted.
                         add(s, "tac", 3, "cell " + s.cid + " used to be in tracking area "
                                 + was + " and now claims " + s.tac);
                     }
@@ -279,7 +329,7 @@ public final class RadioRules {
             // Being on 2G or 3G is ordinary. Being on 2G or 3G with a strong
             // signal is not: a real coverage hole is quiet, and equipment that
             // wants your identity has to be close enough to be loud.
-            if (oldRatRun == sustain && strong) {
+            if (oldRatRun == sustain && strong && !trusted) {
                 add(s, "oldrat", 3, "on " + s.rat + " at " + s.rsrp + " dBm, which is a strong signal "
                         + "for an old network");
             }
@@ -287,12 +337,12 @@ public final class RadioRules {
             // By the time a run is three samples long, the previous sample is
             // empty too, so asking about it could never be true. What matters is
             // whether neighbours were there before the run started.
-            if (noNeighbourRun == sustain && strong && hadNeighboursBefore) {
+            if (noNeighbourRun == sustain && strong && hadNeighboursBefore && !trusted) {
                 add(s, "neighbours", 2, "no neighbouring cells reported at " + s.rsrp
                         + " dBm, where there were several moments earlier");
             }
 
-            if (s.registrationFailCause != null && strong) {
+            if (s.registrationFailCause != null && strong && !trusted) {
                 add(s, "regfail", 2, "the network refused to register this phone (cause "
                         + s.registrationFailCause + ") despite a strong signal");
             }
@@ -318,12 +368,24 @@ public final class RadioRules {
             // management by design, so it never scores. A hard bar scores only
             // once it has held for a few samples at a strong signal: congestion
             // bars flicker as load shifts, a cell herding phones bars steadily.
-            if (hardBarRun == sustain && strong) {
+            if (hardBarRun == sustain && strong && !trusted) {
                 add(s, "barred", 2, "the cell has been barring "
                         + join(new ArrayList<>(s.barred))
                         + " unconditionally for several samples at " + s.rsrp
                         + " dBm, which is a strong signal for a cell steadily turning "
                         + "service away rather than shedding load");
+            }
+
+            // A cell this phone has never seen is, on its own, just travel - new
+            // towns are full of new cells. But a stranger that is ALSO doing one
+            // of the odd things above is more suspicious than a familiar cell
+            // doing it, so it adds a point only once something else has scored.
+            // Only once something already substantive has scored - a stranger
+            // adds weight to a real suspicion, it never creates one. Gating on
+            // score > 0 let it tip a lone soft indicator over on rare rural holes;
+            // requiring 2 keeps it purely additive.
+            if (stranger && s.memoryReady && score >= 2) {
+                add(s, "unfamiliar", 1, "and this is a cell this phone has never seen before");
             }
 
             // Hold briefly once the threshold is crossed, so corroboration

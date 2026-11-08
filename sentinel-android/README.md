@@ -13,7 +13,7 @@ Deleting the branch loses nothing else.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `09f290ca6f5540f17ce303e9735d88826dc8e9ba81cab05a99a534719dab2ce2`,
+`dist/sentinel.apk` — 29061 bytes, sha256 `df68e1fd8c20589513d41fcc5148e25e28f3238efe3120704bdb7248ea3a5d1b`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
@@ -32,6 +32,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     javac -d /tmp/e src/com/bluetier/sentinel/Rules.java eval/Tests.java eval/Eval.java
     java -cp /tmp/e Tests        # 30 regression tests, the installed-software rules
     java -cp /tmp/e RadioTests   # 22 regression tests, the radio rules
+    java -cp /tmp/e ObservatoryTests  # 8 tests, the cell memory
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
@@ -108,6 +109,24 @@ about 2,000 trips to unfamiliar routes and roughly 35 carrier re-plans:
 
 The first is the realistic case, because equipment that wants phones to attach
 to it imitates the network already there.
+
+The watch keeps a persistent memory of every cell that has ever served this
+phone - the network seen from below. An operator console sees every site from
+above and asks which are down; a phone cannot see sites, only the cells that
+broadcast to it, so the view from the ground is not a map but a memory, and the
+question it answers is the inverse: is this cell one I know, or a stranger? That
+memory changes what the same reading means. A tower you have stood under for
+weeks shedding load is congestion and its odd behaviour is discounted; the same
+behaviour on a cell you have never seen is corroborated. The distinction is the
+handset-side echo of an operator's "not discovered / new site". A cell becomes an
+anchor only after being seen across several sessions and places; until the phone
+has learned a baseline, "never seen before" says nothing and does not score, so a
+fresh install does not treat every cell on its first drive as suspect. And a cell
+that reuses a known identity but claims a different tracking area is wearing that
+cell's name rather than being it: its anchor trust is revoked for the session the
+moment memory and the broadcast disagree, which is what stops an impersonator
+from inheriting the very discount meant to quiet the real cell. The memory is
+stored in the app's own space as plain lines and never leaves the phone.
 
 A fourth indicator reads cell barring, which is the handset-side view of what a
 carrier's own console labels "site locked or barred": a cell broadcasts that it
