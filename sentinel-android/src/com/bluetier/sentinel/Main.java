@@ -320,6 +320,32 @@ public class Main extends Activity {
         } catch (Throwable t) {
             d.playProtect = null;      // stays unknown rather than counting as off
         }
+
+        try {
+            d.adbEnabled = Settings.Global.getInt(getContentResolver(), "adb_enabled");
+        } catch (Throwable ignored) { }
+        try {
+            d.adbWifiEnabled = Settings.Global.getInt(getContentResolver(), "adb_wifi_enabled");
+        } catch (Throwable ignored) { }
+
+        try {
+            android.bluetooth.BluetoothManager bm =
+                    (android.bluetooth.BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+            android.bluetooth.BluetoothAdapter ba = bm == null ? null : bm.getAdapter();
+            if (ba == null) {
+                d.bondedRead = Rules.Read.REFUSED;
+            } else {
+                java.util.Set<android.bluetooth.BluetoothDevice> bonded = ba.getBondedDevices();
+                if (bonded == null) d.bondedRead = Rules.Read.REFUSED;
+                else for (android.bluetooth.BluetoothDevice bd : bonded) {
+                    String name;
+                    try { name = bd.getName(); } catch (Throwable t) { name = null; }
+                    d.bondedDevices.add(name == null || name.isEmpty() ? bd.getAddress() : name);
+                }
+            }
+        } catch (SecurityException e) {
+            d.bondedRead = Rules.Read.REFUSED;   // needs BLUETOOTH_CONNECT
+        } catch (Throwable ignored) { }
     }
 
     /**

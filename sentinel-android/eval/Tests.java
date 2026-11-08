@@ -48,6 +48,8 @@ public class Tests {
         collectorErrorCannotReadAsClean();
         noRootPathsIsNotAClaimOfNoRoot();
         debuggableBuildIsAFinding();
+        pairedDevicesAreListedAsAPosture();
+        debuggingEnabledIsAPostureNote();
 
         System.out.printf("%n%d passed, %d failed%n", pass, fail);
         if (fail > 0) System.exit(1);
@@ -321,6 +323,20 @@ public class Tests {
         Dev d = base();
         d.debuggable = "1";
         check("a debuggable build is a finding", has(d, "B05"));
+    }
+
+    static void pairedDevicesAreListedAsAPosture() {
+        Dev d = base();
+        d.bondedDevices.add("My VW 1838");
+        d.bondedDevices.add("WF-C510");
+        check("paired Bluetooth devices are listed as a note",
+                has(d, "Y01") && !Rules.detected(Rules.evaluate(d)));
+    }
+    static void debuggingEnabledIsAPostureNote() {
+        Dev d = base();
+        d.adbWifiEnabled = 1;
+        check("debugging being enabled is a posture note, not a finding",
+                has(d, "Y02") && !Rules.detected(Rules.evaluate(d)));
     }
 
     // ----------------------------------------------------------------- harness

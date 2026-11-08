@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.bluetier.sentinel" android:versionCode="3" android:versionName="1.2">
+    package="com.bluetier.sentinel" android:versionCode="4" android:versionName="1.3">
 
   <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="35" />
 
@@ -33,6 +33,8 @@
        results are gated behind the location permission above. Still no INTERNET. -->
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- List devices paired to this phone, to spot one you do not recognise. -->
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
   <application android:label="Sentinel" android:icon="@android:drawable/ic_lock_lock"
       android:theme="@android:style/Theme.Material.NoActionBar"

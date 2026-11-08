@@ -13,7 +13,7 @@ Deleting the branch loses nothing else.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `313531568b2bb48927d2c3f4e99498c24a4fb2e9832cfef70777a7c2297478d1`,
+`dist/sentinel.apk` — 29061 bytes, sha256 `3222269f383b1b433dc80cec1626e626f69be4d55bb58cb0803af7b7baa5458f`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
@@ -37,6 +37,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e WifiEval 2000 # false positives and detection, synthetic Wi-Fi
     java -cp /tmp/e GnssTests    # 9 tests, GPS spoofing and jamming
     java -cp /tmp/e GnssEval     # false positives and detection, synthetic skies
+    java -cp /tmp/e SensorTests  # 12 tests, live sensor-access judgment
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
@@ -219,6 +220,24 @@ carrying poor quality (SINR below zero at a strong RSRP) means something is
 raising the noise floor. The common cause is a crowded area or an obstruction, so
 it is a note that explains a bad connection where the bars look fine, not an
 alarm.
+
+## Catching the act
+
+Every other check reads capability or configuration - what an app could do, or
+what is set up. This one reads activity. The system reports the moment any app
+starts using the microphone, camera, screen capture or location, and the watch
+judges it by context: you in the app using it is you using it; an app you are not
+looking at turning on the microphone while the screen is off is not. It needs the
+GET_APP_OPS_STATS grant (the same one the app-operation checks use) to see other
+apps, and it reads the screen-off case cleanly, because with the screen off
+nothing is in the foreground - mic or camera use then, off a call, is covert and
+names the app that did it. Screen capture from a background app is treated as
+critical regardless, because it reads everything shown after decryption. This
+turns "what could spy on you" into "something just did, here is what and when".
+
+Two companions ride the on-demand scan: the Bluetooth devices paired to the
+phone, listed so an unfamiliar one stands out, and whether USB or wireless
+debugging is switched on, which is a standing way in for a computer.
 
 ## What it cannot see
 

@@ -86,6 +86,11 @@ public final class Rules {
         public Integer playProtect;
         /** Set when the collector threw partway through. */
         public String collectorError;
+        /** Bluetooth devices bonded to this phone, as "name (type)". */
+        public final List<String> bondedDevices = new ArrayList<>();
+        public Read bondedRead = Read.OK;
+        /** Whether USB / wireless debugging is enabled - a remote-access surface. */
+        public Integer adbEnabled, adbWifiEnabled;
 
         public AppRec app(String pkg) {
             for (AppRec a : apps) if (a.pkg.equals(pkg)) return a;
@@ -234,6 +239,7 @@ public final class Rules {
         certificates(d, out);
         departed(d, out);
         settings(d, out);
+        connectivity(d, out);
 
         Collections.sort(out);
         return out;
@@ -631,6 +637,27 @@ public final class Rules {
                     null, join(plain) + ". Normal after an uninstall that kept data, and after "
                     + "an app is removed for this user while another profile still has it. "
                     + "Listed so you can recognise a name you did not expect.", true));
+        }
+    }
+
+    /** Paired devices and remote-access surfaces - context, judged by the owner. */
+    private static void connectivity(Dev d, List<Finding> out) {
+        if (!d.bondedDevices.isEmpty()) {
+            out.add(new Finding("Y01", "LOW", d.bondedDevices.size()
+                    + " Bluetooth device(s) are paired to this phone", null,
+                    join(d.bondedDevices) + ". Paired devices can reconnect on their own. "
+                    + "Recognise each one - a name you do not know, or a device you no longer "
+                    + "have, is worth removing in Bluetooth settings.", true));
+        }
+        boolean adb = (d.adbEnabled != null && d.adbEnabled == 1);
+        boolean adbw = (d.adbWifiEnabled != null && d.adbWifiEnabled == 1);
+        if (adb || adbw) {
+            out.add(new Finding("Y02", "MEDIUM", "Debugging access is switched on", null,
+                    (adbw ? "Wireless debugging" : "USB debugging") + " is enabled. It lets a "
+                    + "computer read from and control this phone, and it is how a scan over a "
+                    + "cable reaches the parts an app cannot. If you did not turn it on, or no "
+                    + "longer need it, switch it off in Developer options - it is a standing way "
+                    + "in.", true));
         }
     }
 

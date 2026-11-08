@@ -1,8 +1,10 @@
 package com.bluetier.sentinel;
 
 import android.app.*;
+import android.os.PowerManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
@@ -47,6 +49,11 @@ import java.util.concurrent.Executor;
 public class RadioService extends Service {
 
     public static final String CHANNEL = "radio";
+    /** Apps that legitimately use the mic or camera in the background. */
+    private static final java.util.Set<String> SENSOR_OK = new java.util.HashSet<>(java.util.Arrays.asList(
+        "com.google.android.googlequicksearchbox", "com.google.android.apps.googleassistant",
+        "com.samsung.android.bixby.agent", "com.google.android.dialer", "com.android.dialer",
+        "com.google.android.apps.messaging", "com.google.android.gms"));
     public static final String ACTION_STOP = "com.bluetier.sentinel.STOP";
     public static final int NOTE_ID = 1;
 
@@ -60,6 +67,9 @@ public class RadioService extends Service {
     private CellObservatory observatory = new CellObservatory();
     private WifiObservatory wifiMem = new WifiObservatory();
     private final GnssRules.Watcher gnssWatcher = new GnssRules.Watcher();
+    private final SensorRules.Watcher sensorWatcher = new SensorRules.Watcher();
+    private AppOpsManager appOps;
+    private AppOpsManager.OnOpActiveChangedListener opListener;
     private volatile GnssStatus lastGnssStatus;
     private volatile double lastAgcDb; private volatile boolean lastAgcKnown;
     private volatile Location lastLocation; private volatile float lastSpeed = Float.NaN;
@@ -130,6 +140,7 @@ public class RadioService extends Service {
         try { if (lm != null && gnssCb != null) lm.unregisterGnssStatusCallback(gnssCb); } catch (Throwable ignored) { }
         try { if (lm != null && measCb != null) lm.unregisterGnssMeasurementsCallback(measCb); } catch (Throwable ignored) { }
         try { if (lm != null && locListener != null) lm.removeUpdates(locListener); } catch (Throwable ignored) { }
+        try { if (appOps != null && opListener != null) appOps.stopWatchingActive(opListener); } catch (Throwable ignored) { }
         try { if (audioCallback != null) am.unregisterAudioDeviceCallback(audioCallback); } catch (Throwable ignored) { }
         saveObservatory();
         append("radio.log", stamp() + "  watch stopped after " + samples + " samples, "
@@ -198,6 +209,74 @@ public class RadioService extends Service {
         catch (Throwable t) { append("radio.log", stamp() + "  could not attach to the radio: " + t); }
 
         attachGnss(ex);
+        attachSensors(ex);
+    }
+
+    /**
+     * The live sensor watch: the system tells us the moment any app starts using
+     * the microphone, camera, screen capture or location. Needs GET_APP_OPS_STATS
+     * (granted once over adb) to see other apps; without it, nothing is watched
+     * and the rest of Sentinel is unaffected.
+     *
+     * The screen-off case is the one that matters and is read cleanly: with the
+     * screen off nothing is in the foreground, so mic or camera use then, off a
+     * call, is covert. With the screen on, the app only acts when it can confirm
+     * the using app is not the one in front of you, to avoid flagging your own use.
+     */
+    private void attachSensors(Executor ex) {
+        if (!Deep.canReadAppOps(this)) return;
+        appOps = (AppOpsManager) getSystemService(Context.APP_OPS_SERVICE);
+        if (appOps == null) return;
+        String[] ops = {
+            AppOpsManager.OPSTR_RECORD_AUDIO, AppOpsManager.OPSTR_CAMERA,
+            Rules.OP_PROJECT_MEDIA, AppOpsManager.OPSTR_FINE_LOCATION,
+        };
+        try {
+            opListener = (op, uid, pkg, active) -> { if (active) onSensorActive(op, pkg); };
+            appOps.startWatchingActive(ops, ex, opListener);
+        } catch (Throwable t) {
+            append("radio.log", stamp() + "  could not watch sensor access: " + t);
+        }
+    }
+
+    private void onSensorActive(String op, String pkg) {
+        try {
+            SensorRules.Event e = new SensorRules.Event(System.currentTimeMillis(),
+                    mapOp(op), pkg == null ? "" : pkg);
+            if (e.pkg.equals(getPackageName())) return;   // our own reads
+            PowerManager pm = getSystemService(PowerManager.class);
+            e.screenOn = pm != null && pm.isInteractive();
+            e.inCall = inCall;
+            try {
+                ApplicationInfo ai = getPackageManager().getApplicationInfo(e.pkg, 0);
+                e.systemApp = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+                e.label = String.valueOf(getPackageManager().getApplicationLabel(ai));
+            } catch (Throwable ignored) { }
+            e.recognized = SENSOR_OK.contains(e.pkg);
+            // Foreground only matters when the screen is on; with it off nothing
+            // is foreground. When the screen is on and we cannot tell, assume it
+            // is your own use, so we never flag the app you are looking at.
+            e.appForeground = e.screenOn && !e.systemApp ? true : false;
+            if (!e.screenOn) e.appForeground = false;
+
+            SensorRules.Finding f = sensorWatcher.accept(e);
+            if (f == null || f.posture) return;
+            events++;
+            append("events.log", stamp() + "  [" + f.severity + "] " + f.title
+                    + " (" + (f.pkg == null ? "?" : f.pkg) + ")\n            " + f.detail + "\n");
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.notify((int) (System.currentTimeMillis() % 70000) + 40000,
+                    new Notification.Builder(this, CHANNEL).setContentTitle(f.title)
+                        .setStyle(new Notification.BigTextStyle().bigText(f.detail))
+                        .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
+        } catch (Throwable ignored) { }
+    }
+
+    private static String mapOp(String op) {
+        if (AppOpsManager.OPSTR_RECORD_AUDIO.equals(op)) return SensorRules.MIC;
+        if (AppOpsManager.OPSTR_CAMERA.equals(op)) return SensorRules.CAMERA;
+        if (Rules.OP_PROJECT_MEDIA.equals(op)) return SensorRules.SCREEN;
+        return SensorRules.LOCATION;
     }
 
     /** Listen to the satellites, for spoofing and jamming. Needs the same
