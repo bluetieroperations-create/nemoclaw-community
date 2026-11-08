@@ -4,7 +4,7 @@ import java.util.*;
 
 /** Synthetic skies: does the spoof/jam detector fire on honest ones? */
 public class GnssEval {
-    static Snapshot honest(Random r, boolean urban) {
+    public static Snapshot honest(Random r, boolean urban) {
         Snapshot s = new Snapshot(0);
         int n = urban ? 4 + r.nextInt(6) : 8 + r.nextInt(14);
         for (int i = 0; i < n; i++) {

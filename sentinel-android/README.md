@@ -53,6 +53,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e SensorTests  # 12 tests, live sensor-access judgment
     java -cp /tmp/e CorrelatorTests  # 10 tests, cross-signal coincidence
     java -cp /tmp/e SelfAuditTests   # 7 tests, the coverage self-audit
+    java -cp /tmp/e GuardTests       # 8 assertion guards over the eval bounds
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
@@ -90,6 +91,12 @@ per app. That calibration is measured on the device being scanned rather than
 hard-coded, because the platform default for `android:read_clipboard` could not be
 established off-device, and if it is "allowed" then a rule treating it as a
 capability is worthless.
+
+The test suite was mutation-tested (see MUTATION.md). The honest result: it
+caught about 40% of injected faults, well below what the passing count
+suggested. Most survivors are equivalent mutants; the genuine holes found -
+an entirely untested notification path among them - are now covered or
+recorded. No latent bug: every core detection path still fires at 100%.
 
 ## Watching the radio
 

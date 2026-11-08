@@ -48,6 +48,12 @@ public class Tests {
         collectorErrorCannotReadAsClean();
         noRootPathsIsNotAClaimOfNoRoot();
         debuggableBuildIsAFinding();
+        notificationAccessRefusedIsANote();
+        anAppReadingNotificationsIsFlagged();
+        aRecognisedWearCompanionReadingNotificationsIsFine();
+        aSystemAppWithNotificationAccessIsSkipped();
+        anAppStoreAdminIsLowerSeverityThanASideloadedOne();
+        aKeyboardInUseIsDistinguishedFromOneMerelyEnabled();
         pairedDevicesAreListedAsAPosture();
         debuggingEnabledIsAPostureNote();
 
@@ -325,6 +331,54 @@ public class Tests {
         check("a debuggable build is a finding", has(d, "B05"));
     }
 
+    static void notificationAccessRefusedIsANote() {
+        Dev d = base();
+        d.notifications = Setting.refused();
+        check("a refused notification-access read is reported as unknown",
+                has(d, "N01") && !Rules.detected(Rules.evaluate(d)));
+    }
+    static void anAppReadingNotificationsIsFlagged() {
+        Dev d = base();
+        d.apps.add(side("com.unknown.listener"));
+        d.notifications = Setting.of("com.unknown.listener/.NLS");
+        check("an unrecognised app with notification access is a finding",
+                has(d, "N02") && Rules.detected(Rules.evaluate(d)));
+    }
+    static void aRecognisedWearCompanionReadingNotificationsIsFine() {
+        Dev d = base();
+        d.notifications = Setting.of("com.google.android.apps.wear.companion/.NLS");
+        check("a recognised wear companion reading notifications is not flagged",
+                !hasId(Rules.evaluate(d), "N02"));
+    }
+    static void aSystemAppWithNotificationAccessIsSkipped() {
+        Dev d = base();
+        AppRec sys = new AppRec("com.oem.sysui"); sys.system = true;
+        d.apps.add(sys);
+        d.notifications = Setting.of("com.oem.sysui/.Listener");
+        check("a system app with notification access is skipped",
+                !hasId(Rules.evaluate(d), "N02"));
+    }
+    static void anAppStoreAdminIsLowerSeverityThanASideloadedOne() {
+        Dev store = base();
+        AppRec sa = store("com.mdm.fromstore"); store.apps.add(sa); store.admins.add(sa.pkg);
+        Dev side = base();
+        AppRec xa = side("com.mdm.sideloaded"); side.apps.add(xa); side.admins.add(xa.pkg);
+        check("a sideloaded admin outranks a store-installed one in severity",
+                hasSeverity(side, "D02", "HIGH") && hasSeverity(store, "D02", "MEDIUM"));
+    }
+    static void aKeyboardInUseIsDistinguishedFromOneMerelyEnabled() {
+        Dev inUse = base();
+        inUse.keyboards.add("com.spy.ime");
+        inUse.activeKeyboard = "com.spy.ime/.IME";
+        inUse.apps.add(side("com.spy.ime"));
+        Dev enabled = base();
+        enabled.keyboards.add("com.spy.ime");
+        enabled.activeKeyboard = "com.google.android.inputmethod.latin/.LatinIME";
+        enabled.apps.add(side("com.spy.ime"));
+        check("a sideloaded keyboard in use is more severe than one merely enabled",
+                hasSeverity(inUse, "K03", "CRITICAL") && hasSeverity(enabled, "K03", "HIGH"));
+    }
+
     static void pairedDevicesAreListedAsAPosture() {
         Dev d = base();
         d.bondedDevices.add("My VW 1838");
@@ -367,6 +421,10 @@ public class Tests {
         return a;
     }
 
+    static boolean hasId(java.util.List<Finding> f, String id) {
+        for (Finding x : f) if (x.id.equals(id)) return true;
+        return false;
+    }
     static boolean has(Dev d, String id) {
         for (Finding f : Rules.evaluate(d)) if (f.id.equals(id)) return true;
         return false;

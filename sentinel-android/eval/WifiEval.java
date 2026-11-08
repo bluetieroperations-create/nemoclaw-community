@@ -23,7 +23,7 @@ public class WifiEval {
     }
 
     /** One person's Wi-Fi day: home, maybe work, passing hotspots and neighbours. */
-    static Scan day(Random r, long t, String homeSsid, Sec homeSec, boolean uniqueName) {
+    public static Scan day(Random r, long t, String homeSsid, Sec homeSec, boolean uniqueName) {
         Scan s = new Scan(t);
         // home: a mesh of 2-3 radios, the phone joined to one
         int nodes = 2 + r.nextInt(2);
