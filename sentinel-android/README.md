@@ -33,6 +33,8 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e Tests        # 30 regression tests, the installed-software rules
     java -cp /tmp/e RadioTests   # 22 regression tests, the radio rules
     java -cp /tmp/e ObservatoryTests  # 8 tests, the cell memory
+    java -cp /tmp/e WifiTests    # 12 tests, the evil-twin rules
+    java -cp /tmp/e WifiEval 2000 # false positives and detection, synthetic Wi-Fi
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
@@ -169,6 +171,32 @@ The app declares no `INTERNET` permission, which you can confirm in Settings or
 with `aapt dump badging`. An app without it cannot open a network connection, so
 none of this can be sent anywhere, by this app or by anything that compromises
 it. Decline the radio permissions and every other check still works.
+
+## The Wi-Fi watch: evil twins
+
+A router sees every client on it; a phone sees every access point around it, the
+inverse. The attack is the IP-layer twin of an IMSI catcher: a rogue access point
+broadcasting a network name you trust, to lure the phone into joining so it can
+read what you send. The tell is a security downgrade - a network you have only
+ever joined locked (WPA2 or WPA3) offered weaker - because a real network does
+not lower its own door.
+
+The discriminator is defined by the access points you have actually joined and
+their security, never by the strongest security merely scanned for a name. That
+distinction is what makes it safe for common default names: a neighbour running
+the same "NETGEAR" at weaker security cannot make your own connection look
+downgraded, because the phone never joins the neighbour. Measured over 30 days
+each for 2,000 people per naming scheme, three seeds, with mesh routers, dual-band
+steering, public hotspots and colliding default names mixed in: zero false
+positives whether the home name is unique or a common default.
+
+The only alarm is being joined to a weakened copy right now (CRITICAL, caught
+100% of the time), because that is the moment the twin can do harm and the moment
+it becomes unambiguous. A weaker copy merely nearby is a posture note gated on a
+strong signal, not an alarm, because a nearby copy is indistinguishable from a
+neighbour with the same name until you connect to it. A proxy set on the Wi-Fi
+link is a finding; encrypted DNS being off is a posture note. The Wi-Fi memory
+persists in the app's own space and never leaves the phone.
 
 ## What it cannot see
 
