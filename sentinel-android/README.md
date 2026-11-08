@@ -8,12 +8,25 @@ NemoClaw Community project.** It is here because it needed somewhere reachable
 over HTTP and a standalone repository could not be created from this session.
 Deleting the branch loses nothing else.
 
+## What this scan could check
+
+The rule this project was built on: a scanner that silently finds nothing is
+worse than one that admits it was blocked. Every check follows it; the self-audit
+turns it on the whole app. A phone reports "no indicators found" for two very
+different reasons - because it looked and is clean, or because it could not look -
+and those must never read the same. So every scan opens with which of the app's
+eyes are open on this device, which are shut and why, and a coverage figure, so a
+clean verdict is worth exactly what you can see was behind it. On a MediaTek phone
+without the app-operation grant, for instance, it reports 81% coverage with
+screen-capture detection blind, and names the one adb command that fixes it -
+rather than printing a green light over a check that never ran.
+
 ## Install
 
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `7021088c25474974d82b2e1e5ca8ff9f5fc977116a4a4e398f0fdc3c665914b1`,
+`dist/sentinel.apk` — 29061 bytes, sha256 `1a28ea788b821e81814d421b2c96138bda69a3508eea96f371b7abe4704b5571`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
@@ -39,6 +52,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e GnssEval     # false positives and detection, synthetic skies
     java -cp /tmp/e SensorTests  # 12 tests, live sensor-access judgment
     java -cp /tmp/e CorrelatorTests  # 10 tests, cross-signal coincidence
+    java -cp /tmp/e SelfAuditTests   # 7 tests, the coverage self-audit
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 

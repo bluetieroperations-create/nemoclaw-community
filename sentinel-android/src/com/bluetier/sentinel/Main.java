@@ -227,9 +227,10 @@ public class Main extends Activity {
             }
             final List<Rules.Finding> found = Rules.evaluate(d);
             final int appCount = d.apps.size();
+            final SelfAudit.Report audit = SelfAudit.assess(d);
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
-                render(found, appCount);
+                render(found, appCount, audit);
             });
         }).start();
     }
@@ -379,7 +380,7 @@ public class Main extends Activity {
 
     // ------------------------------------------------------------- rendering
 
-    private void render(List<Rules.Finding> all, int appCount) {
+    private void render(List<Rules.Finding> all, int appCount, SelfAudit.Report audit) {
         scanButton.setEnabled(true);
         List<Rules.Finding> findings = new ArrayList<>(), notes = new ArrayList<>();
         for (Rules.Finding f : all) {
@@ -392,6 +393,33 @@ public class Main extends Activity {
                 : score >= 10 ? YELLOW : GREEN);
         subtitle.setText(appCount + " apps checked · " + findings.size()
                 + " finding(s) · " + notes.size() + " note(s)");
+
+        // What did this actually check? A verdict is only worth its coverage.
+        results.addView(label("WHAT THIS SCAN COULD CHECK", ACCENT, 12, true));
+        int coverColour = audit.blind == 0 ? GREEN : audit.blind >= 2 ? RED : YELLOW;
+        TextView cov = label(SelfAudit.headline(audit), coverColour, 13, audit.blind > 0);
+        results.addView(cov);
+        for (SelfAudit.Check c : audit.checks) {
+            if (c.state == SelfAudit.State.LIVE) continue;   // list only what is not fully live
+            int cc = c.state == SelfAudit.State.BLIND ? RED : YELLOW;
+            String tag = c.state == SelfAudit.State.BLIND ? "BLIND" : "PARTIAL";
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setBackgroundColor(CARD);
+            card.setPadding(px(14), px(10), px(14), px(10));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.bottomMargin = px(8); card.setLayoutParams(lp);
+            card.addView(label(tag + " · " + c.name, cc, 12, true));
+            card.addView(label(c.detail, BODY, 13, false));
+            if (c.remedy != null) {
+                TextView rem = label(c.remedy, MUTED, 12, false);
+                rem.setTypeface(Typeface.MONOSPACE);
+                card.addView(rem);
+            }
+            results.addView(card);
+        }
+        results.addView(label("—", MUTED, 12, false));
 
         if (findings.isEmpty()) {
             results.addView(label("No known pattern matched. That is not proof this phone is "
