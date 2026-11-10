@@ -56,6 +56,34 @@ public final class Rules {
         public static Setting refused() { return new Setting(Read.REFUSED, null); }
     }
 
+    /**
+     * The always-on watch's self-reported attach state.
+     *
+     * A scan and the live watch are separate halves of this app, and for six days
+     * of real driving the scan reported a clean, trustworthy result while the
+     * radio watch sat refused the whole time - the telephony listeners had thrown
+     * a SecurityException at startup and nothing said so. LIVE means the watch
+     * attached; BLIND means it was refused (a permission is missing); OFF means it
+     * has run before but is stopped now; UNKNOWN means it has never run on this
+     * install, so a scan cannot yet speak to the live half at all.
+     */
+    public enum Watch { LIVE, BLIND, OFF, UNKNOWN }
+
+    public static final class LiveWatch {
+        /** Telephony listeners: barring, operator identity, the cell memory. */
+        public Watch radio = Watch.UNKNOWN;
+        /** The satellite watch: GPS spoofing and jamming. */
+        public Watch gnss = Watch.UNKNOWN;
+        /** The live microphone / camera / screen-capture watch. */
+        public Watch sensors = Watch.UNKNOWN;
+        /** Whether the watch service is up right now. */
+        public boolean running;
+        /** When the watch last wrote its status, epoch millis; 0 when never. */
+        public long asOf;
+        /** Context for the detail lines: cells in memory, satellites last seen. */
+        public int cells, sats;
+    }
+
     public static final class Dev {
         public final List<AppRec> apps = new ArrayList<>();
         public Setting accessibility = Setting.of(null);
@@ -91,6 +119,8 @@ public final class Rules {
         public Read bondedRead = Read.OK;
         /** Whether USB / wireless debugging is enabled - a remote-access surface. */
         public Integer adbEnabled, adbWifiEnabled;
+        /** The always-on watch's last reported state, read from its status file. */
+        public final LiveWatch live = new LiveWatch();
 
         public AppRec app(String pkg) {
             for (AppRec a : apps) if (a.pkg.equals(pkg)) return a;

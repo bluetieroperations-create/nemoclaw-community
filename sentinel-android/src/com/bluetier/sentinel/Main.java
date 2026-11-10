@@ -237,8 +237,48 @@ public class Main extends Activity {
 
     // -------------------------------------------------------------- collector
 
+    /**
+     * Fold in the always-on watch's self-report, so the self-audit can say which
+     * live eyes are open instead of ignoring that half of the app. The per-watch
+     * states come from the file the service wrote; whether it is running right now
+     * comes from the live flag, since the scan and the service share a process.
+     */
+    private void readWatchStatus(Rules.Dev d) {
+        d.live.running = RadioService.isRunning();
+        try {
+            java.io.File f = new java.io.File(getExternalFilesDir(null), "watch-status.tsv");
+            if (!f.isFile()) return;   // never run: every live check stays UNKNOWN
+            String body = new String(java.nio.file.Files.readAllBytes(f.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            for (String ln : body.split("\n")) {
+                int tab = ln.indexOf('\t');
+                if (tab < 0) continue;
+                String k = ln.substring(0, tab), v = ln.substring(tab + 1).trim();
+                switch (k) {
+                    case "asOf":    try { d.live.asOf = Long.parseLong(v); } catch (Exception ignored) { } break;
+                    case "cells":   try { d.live.cells = Integer.parseInt(v); } catch (Exception ignored) { } break;
+                    case "sats":    try { d.live.sats = Integer.parseInt(v); } catch (Exception ignored) { } break;
+                    case "radio":   d.live.radio = watchOf(v); break;
+                    case "gnss":    d.live.gnss = watchOf(v); break;
+                    case "sensors": d.live.sensors = watchOf(v); break;
+                    default: break;
+                }
+            }
+        } catch (Throwable ignored) { }
+    }
+
+    private static Rules.Watch watchOf(String v) {
+        switch (v) {
+            case "live":  return Rules.Watch.LIVE;
+            case "blind": return Rules.Watch.BLIND;
+            case "off":   return Rules.Watch.OFF;
+            default:      return Rules.Watch.UNKNOWN;
+        }
+    }
+
     private void collect(Rules.Dev d) {
         PackageManager pm = getPackageManager();
+        readWatchStatus(d);
 
         Set<String> launchers = new HashSet<>();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);

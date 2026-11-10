@@ -94,9 +94,63 @@ public final class SelfAudit {
                     : d.bondedDevices.size() + " paired device(s) listed to recognise.",
                 d.bondedRead == Rules.Read.REFUSED ? "Grant the Nearby devices permission." : null));
 
+        // The live half of the app. The scan above is a snapshot; these are the
+        // always-on watches, and until this was wired in a refused watch could
+        // report nothing while the scan still read "clean". Now the scan says
+        // which live eyes are open.
+        Rules.LiveWatch lw = d.live;
+        c.add(live("Live radio / cell watch (barring, cell memory)", lw.radio, lw.running,
+                lw.cells + " cell(s) in memory; the telephony listeners are attached, so site "
+                + "barring and tracking-area changes are being watched.",
+                "The telephony listeners were refused, so barring, operator identity and the "
+                + "cell memory are not running - the IMSI-catcher checks cannot fire.",
+                "Grant it once over USB:\n    adb shell pm grant com.bluetier.sentinel "
+                + "android.permission.READ_PHONE_STATE"));
+        c.add(live("Live satellite watch (GPS spoofing & jamming)", lw.gnss, lw.running,
+                lw.sats + " satellite(s) in view at the last heartbeat; spoofing and jamming "
+                + "are being watched.",
+                "The satellite watch could not attach - location is not granted to it, so GPS "
+                + "spoofing and jamming are not being watched.",
+                "Grant location to Sentinel (Precise, Allow all the time) in app settings."));
+        c.add(live("Live sensor watch (microphone, camera, screen)", lw.sensors, lw.running,
+                "The instant any app starts the microphone, camera or screen capture is being "
+                + "watched, with the screen-off case read as covert.",
+                "The live sensor watch could not attach without GET_APP_OPS_STATS, so nothing "
+                + "is watching the microphone, camera or screen capture in real time.",
+                "Grant it once over USB:\n    adb shell pm grant com.bluetier.sentinel "
+                + "android.permission.GET_APP_OPS_STATS"));
+
         int live = 0, deg = 0, blind = 0;
         for (Check x : c) { if (x.state == State.LIVE) live++; else if (x.state == State.DEGRADED) deg++; else blind++; }
         return new Report(c, live, deg, blind);
+    }
+
+    /**
+     * One live watch, mapped to the same LIVE/DEGRADED/BLIND frame as the scan.
+     * BLIND is kept for a genuine refusal - a missing permission with a remedy -
+     * so a blind count always means "something you can fix is unfixed". A watch
+     * that simply is not running, or has never run, is DEGRADED, not BLIND: the
+     * capability is there, it is only unconfirmed.
+     */
+    private static Check live(String name, Rules.Watch w, boolean running,
+                              String liveDetail, String blindDetail, String remedy) {
+        switch (w) {
+            case LIVE:
+                return running
+                    ? new Check(name, State.LIVE, "Live. " + liveDetail, null)
+                    : new Check(name, State.DEGRADED, "Able to run, but the watch is stopped "
+                        + "right now, so it is not covering this at the moment.",
+                        "Open Sentinel and start the radio watch.");
+            case BLIND:
+                return new Check(name, State.BLIND, "Blind. " + blindDetail, remedy);
+            case OFF:
+                return new Check(name, State.DEGRADED, "Not running. This watch has run before "
+                    + "but is stopped now.", "Open Sentinel and start the radio watch.");
+            default: // UNKNOWN
+                return new Check(name, State.DEGRADED, "Unknown. The live watch has not run on "
+                    + "this phone yet, so its coverage cannot be reported.",
+                    "Open Sentinel, start the radio watch, then scan again.");
+        }
     }
 
     private static Check binding(String name, Rules.Setting set) {

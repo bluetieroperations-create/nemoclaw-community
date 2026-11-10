@@ -21,6 +21,16 @@ without the app-operation grant, for instance, it reports 81% coverage with
 screen-capture detection blind, and names the one adb command that fixes it -
 rather than printing a green light over a check that never ran.
 
+This now covers the always-on half too, not just the one-shot scan. The radio,
+satellite and sensor watches each report their own attach state - live, refused
+(with the one-line grant that fixes it), or never started - so a watch that was
+silently refused can no longer hide behind a clean scan. It was not academic: six
+days of real driving ran with the radio watch refused the whole time and nothing
+said so, because the self-audit only looked at the scan. The satellite watch also
+writes a periodic heartbeat to the radio log, so its silence is confirmable - a
+line of satellites in view, or a plain statement that it is off - instead of the
+nothing that a dead watch and a clean sky used to share.
+
 ## Install
 
     adb install -r dist/sentinel.apk
@@ -43,8 +53,8 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
 ## Test
 
     javac -d /tmp/e src/com/bluetier/sentinel/Rules.java eval/Tests.java eval/Eval.java
-    java -cp /tmp/e Tests        # 30 regression tests, the installed-software rules
-    java -cp /tmp/e RadioTests   # 22 regression tests, the radio rules
+    java -cp /tmp/e Tests        # 38 regression tests, the installed-software rules
+    java -cp /tmp/e RadioTests   # 24 regression tests, the radio rules
     java -cp /tmp/e ObservatoryTests  # 8 tests, the cell memory
     java -cp /tmp/e WifiTests    # 12 tests, the evil-twin rules
     java -cp /tmp/e WifiEval 2000 # false positives and detection, synthetic Wi-Fi
@@ -52,7 +62,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e GnssEval     # false positives and detection, synthetic skies
     java -cp /tmp/e SensorTests  # 12 tests, live sensor-access judgment
     java -cp /tmp/e CorrelatorTests  # 10 tests, cross-signal coincidence
-    java -cp /tmp/e SelfAuditTests   # 7 tests, the coverage self-audit
+    java -cp /tmp/e SelfAuditTests   # 11 tests, the coverage self-audit incl. the live watches
     java -cp /tmp/e GuardTests       # 8 assertion guards over the eval bounds
     java -cp /tmp/e BoundaryTests    # 14 threshold edge tests
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices

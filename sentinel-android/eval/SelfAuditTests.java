@@ -14,6 +14,10 @@ public class SelfAuditTests {
         coverageDropsAsChecksGoBlind();
         theHeadlineWarnsWhenAnythingIsBlind();
         aScanThatListedNoAppsIsBlindAtTheRoot();
+        aRefusedRadioWatchIsBlindAndNamesTheGrant();
+        aRunningWatchReadsItsLiveEyesAsLive();
+        aStoppedWatchIsDegradedNotBlind();
+        aWatchNeverStartedIsUnknownNotClean();
 
         System.out.printf("%n%d passed, %d failed%n", pass, fail);
         if (fail > 0) System.exit(1);
@@ -69,7 +73,50 @@ public class SelfAuditTests {
         check("a scan that could not list apps is blind at the root", rootBlind);
     }
 
-    // a device where everything is readable
+    // The regression that six days of driving would have failed: the radio watch
+    // was refused the whole time and the scan still read clean. A refused live
+    // watch must now be BLIND, not silent, and must name the one-line grant.
+    static void aRefusedRadioWatchIsBlindAndNamesTheGrant() {
+        Dev d = full(); d.live.radio = Watch.BLIND;   // running, but telephony refused
+        Report r = SelfAudit.assess(d);
+        boolean found = false;
+        for (Check c : r.checks)
+            if (c.name.contains("radio") && c.state == State.BLIND
+                && c.remedy != null && c.remedy.contains("READ_PHONE_STATE")) found = true;
+        check("a refused radio watch is blind and names the READ_PHONE_STATE grant",
+                found && !r.trustworthy());
+    }
+    static void aRunningWatchReadsItsLiveEyesAsLive() {
+        Report r = SelfAudit.assess(full());   // all three live, service running
+        int liveWatches = 0;
+        for (Check c : r.checks)
+            if (c.name.startsWith("Live ") && c.state == State.LIVE) liveWatches++;
+        check("a running watch reports its radio, satellite and sensor eyes as live",
+                liveWatches == 3);
+    }
+    static void aStoppedWatchIsDegradedNotBlind() {
+        Dev d = full(); d.live.running = false;   // attached last run, stopped now
+        Report r = SelfAudit.assess(d);
+        boolean anyLiveBlind = false, anyLiveDegraded = false;
+        for (Check c : r.checks) {
+            if (!c.name.startsWith("Live ")) continue;
+            if (c.state == State.BLIND) anyLiveBlind = true;
+            if (c.state == State.DEGRADED) anyLiveDegraded = true;
+        }
+        check("a stopped watch is degraded, not blind", anyLiveDegraded && !anyLiveBlind);
+    }
+    static void aWatchNeverStartedIsUnknownNotClean() {
+        // full() leaves the three live watches UNKNOWN unless set, and the service
+        // is not running, so the live half cannot read as fully covered.
+        Dev d = full();
+        d.live.radio = Watch.UNKNOWN; d.live.gnss = Watch.UNKNOWN; d.live.sensors = Watch.UNKNOWN;
+        d.live.running = false;
+        Report r = SelfAudit.assess(d);
+        check("a watch that never ran drops coverage below a fully-live device",
+                r.coveragePercent() < 100 && r.degraded >= 3);
+    }
+
+    // a device where everything is readable and the live watch is running
     static Dev full() {
         Dev d = new Dev();
         d.appOpsReadable = true;
@@ -79,6 +126,8 @@ public class SelfAuditTests {
         d.adminRead = Read.OK;
         d.certRead = Read.OK;
         d.bondedRead = Read.OK;
+        d.live.radio = Watch.LIVE; d.live.gnss = Watch.LIVE; d.live.sensors = Watch.LIVE;
+        d.live.running = true; d.live.cells = 12; d.live.sats = 9;
         for (int i = 0; i < 20; i++) { AppRec x = new AppRec("com.app" + i); d.apps.add(x); }
         return d;
     }

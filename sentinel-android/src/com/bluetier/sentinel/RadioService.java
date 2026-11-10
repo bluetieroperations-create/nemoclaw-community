@@ -49,6 +49,11 @@ import java.util.concurrent.Executor;
 public class RadioService extends Service {
 
     public static final String CHANNEL = "radio";
+    /** A separate, high-importance channel for real findings, so a paired watch
+     *  (Pixel Watch and the like) reliably mirrors them to the wrist. The ongoing
+     *  "watching" note stays on the quiet CHANNEL. No network is involved: the
+     *  phone posts a local notification and the system bridges it over Bluetooth. */
+    public static final String ALERT_CHANNEL = "alerts";
     /** Apps that legitimately use the mic or camera in the background. */
     private static final java.util.Set<String> SENSOR_OK = new java.util.HashSet<>(java.util.Arrays.asList(
         "com.google.android.googlequicksearchbox", "com.google.android.apps.googleassistant",
@@ -59,6 +64,10 @@ public class RadioService extends Service {
 
     /** Seconds between samples. Short enough to catch a pass, long enough to be cheap. */
     private static final long PERIOD_MS = 6000;
+    /** Samples between GNSS heartbeat lines (~5 min at 6s). A heartbeat makes the
+     *  satellite watch's silence confirmable: either "N sats, M used" or an
+     *  explicit "off", instead of nothing at all when it is not watching. */
+    private static final int GNSS_HEARTBEAT = 50;
 
     private static volatile boolean running;
     public static boolean isRunning() { return running; }
@@ -96,6 +105,10 @@ public class RadioService extends Service {
     private volatile Integer pendingRegFail;
     private volatile android.telephony.BarringInfo latestBarring;
     private volatile int events, samples;
+    /** Each live watch's attach outcome, surfaced to the scan's self-audit via
+     *  watch-status.tsv: "live", "blind" (refused) or "off" (not attempted). */
+    private volatile String radioWatch = "off", gnssWatch = "off", sensorWatch = "off";
+    private int gnssBeat;
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -119,6 +132,11 @@ public class RadioService extends Service {
         if (nm != null) {
             nm.createNotificationChannel(new NotificationChannel(CHANNEL,
                     "Radio watch", NotificationManager.IMPORTANCE_LOW));
+            NotificationChannel alerts = new NotificationChannel(ALERT_CHANNEL,
+                    "Sentinel alerts", NotificationManager.IMPORTANCE_HIGH);
+            alerts.setDescription("Raised when a watch finds something worth your attention. "
+                    + "High importance so a paired watch shows it on your wrist.");
+            nm.createNotificationChannel(alerts);
         }
     }
 
@@ -144,6 +162,7 @@ public class RadioService extends Service {
         try { if (appOps != null && opListener != null) appOps.stopWatchingActive(opListener); } catch (Throwable ignored) { }
         try { if (audioCallback != null) am.unregisterAudioDeviceCallback(audioCallback); } catch (Throwable ignored) { }
         saveObservatory();
+        writeStatus(false);
         append("radio.log", stamp() + "  watch stopped after " + samples + " samples, "
                 + events + " event(s); observatory holds " + observatory.size() + " cells");
         super.onDestroy();
@@ -206,11 +225,15 @@ public class RadioService extends Service {
             }
         }
         callback = new Cb();
-        try { tm.registerTelephonyCallback(ex, callback); }
-        catch (Throwable t) { append("radio.log", stamp() + "  could not attach to the radio: " + t); }
+        try { tm.registerTelephonyCallback(ex, callback); radioWatch = "live"; }
+        catch (Throwable t) {
+            radioWatch = "blind";
+            append("radio.log", stamp() + "  could not attach to the radio: " + t);
+        }
 
         attachGnss(ex);
         attachSensors(ex);
+        writeStatus(true);
     }
 
     /**
@@ -225,9 +248,9 @@ public class RadioService extends Service {
      * the using app is not the one in front of you, to avoid flagging your own use.
      */
     private void attachSensors(Executor ex) {
-        if (!Deep.canReadAppOps(this)) return;
+        if (!Deep.canReadAppOps(this)) { sensorWatch = "blind"; return; }
         appOps = (AppOpsManager) getSystemService(Context.APP_OPS_SERVICE);
-        if (appOps == null) return;
+        if (appOps == null) { sensorWatch = "blind"; return; }
         String[] ops = {
             AppOpsManager.OPSTR_RECORD_AUDIO, AppOpsManager.OPSTR_CAMERA,
             Rules.OP_PROJECT_MEDIA, AppOpsManager.OPSTR_FINE_LOCATION,
@@ -235,7 +258,9 @@ public class RadioService extends Service {
         try {
             opListener = (op, uid, pkg, active) -> { if (active) onSensorActive(op, pkg); };
             appOps.startWatchingActive(ops, ex, opListener);
+            sensorWatch = "live";
         } catch (Throwable t) {
+            sensorWatch = "blind";
             append("radio.log", stamp() + "  could not watch sensor access: " + t);
         }
     }
@@ -268,7 +293,7 @@ public class RadioService extends Service {
             feedCorrelator(e.t, Correlator.Source.SENSOR, f.severity, "sensors: " + f.title);
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) nm.notify((int) (System.currentTimeMillis() % 70000) + 40000,
-                    new Notification.Builder(this, CHANNEL).setContentTitle(f.title)
+                    new Notification.Builder(this, ALERT_CHANNEL).setContentTitle(f.title)
                         .setStyle(new Notification.BigTextStyle().bigText(f.detail))
                         .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
         } catch (Throwable ignored) { }
@@ -285,9 +310,9 @@ public class RadioService extends Service {
      *  location permission the cell watch already holds; off if it is not held. */
     private void attachGnss(Executor ex) {
         if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) return;
+                != PackageManager.PERMISSION_GRANTED) { gnssWatch = "blind"; return; }
         lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        if (lm == null) return;
+        if (lm == null) { gnssWatch = "blind"; return; }
         try {
             gnssCb = new GnssStatus.Callback() {
                 @Override public void onSatelliteStatusChanged(GnssStatus st) { lastGnssStatus = st; }
@@ -320,13 +345,16 @@ public class RadioService extends Service {
                 }
             };
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, locListener, Looper.getMainLooper());
+            gnssWatch = "live";
         } catch (Throwable t) {
+            gnssWatch = "blind";
             append("radio.log", stamp() + "  could not attach to GNSS: " + t);
         }
     }
 
     private void sampleGnss(long t) {
         GnssStatus st = lastGnssStatus;
+        if (++gnssBeat >= GNSS_HEARTBEAT) { gnssBeat = 0; gnssHeartbeat(st); }
         if (st == null) return;
         GnssRules.Snapshot snap = new GnssRules.Snapshot(t);
         for (int i = 0; i < st.getSatelliteCount(); i++) {
@@ -371,10 +399,36 @@ public class RadioService extends Service {
             feedCorrelator(t, Correlator.Source.GNSS, f.severity, "satellites: " + f.title);
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) nm.notify((int) (t % 80000) + 30000,
-                    new Notification.Builder(this, CHANNEL).setContentTitle(f.title)
+                    new Notification.Builder(this, ALERT_CHANNEL).setContentTitle(f.title)
                         .setStyle(new Notification.BigTextStyle().bigText(f.detail))
                         .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
         }
+    }
+
+    /**
+     * A periodic line that makes the satellite watch's state visible. Without it,
+     * GNSS writes nothing unless it alerts, so a watch that never attached and a
+     * watch that saw a clean sky read exactly the same in the log - which is the
+     * one thing this project exists to refuse. Either it names the satellites in
+     * view, or it says plainly that it is off and why.
+     */
+    private void gnssHeartbeat(GnssStatus st) {
+        if (!"live".equals(gnssWatch)) {
+            append("radio.log", stamp() + "  gnss heartbeat: satellite watch is "
+                    + ("blind".equals(gnssWatch) ? "off - ACCESS_FINE_LOCATION not granted"
+                                                 : "not started"));
+            return;
+        }
+        if (st == null) {
+            append("radio.log", stamp() + "  gnss heartbeat: watching, no satellites reported yet"
+                    + (lastAgcKnown ? String.format(Locale.US, " (agc=%.1fdB)", lastAgcDb) : ""));
+            return;
+        }
+        int used = 0;
+        for (int i = 0; i < st.getSatelliteCount(); i++) if (st.usedInFix(i)) used++;
+        append("radio.log", stamp() + String.format(Locale.US,
+                "  gnss heartbeat: %d sats, %d used in fix%s", st.getSatelliteCount(), used,
+                lastAgcKnown ? String.format(Locale.US, ", agc=%.1fdB", lastAgcDb) : ", agc unknown"));
     }
 
     private void routeChanged(String how, AudioDeviceInfo[] changed) {
@@ -467,7 +521,7 @@ public class RadioService extends Service {
         // it, so the cell's own first sighting does not read as a stranger.
         s.familiarity = observatory.observe(s);
         s.memoryReady = observatory.establishedBaseline();
-        if (++sinceSave >= 20) { sinceSave = 0; saveObservatory(); }
+        if (++sinceSave >= 20) { sinceSave = 0; saveObservatory(); writeStatus(true); }
         samples++;
         List<RadioRules.Event> found = watcher.accept(s);
         append("radio.log", stamp() + "  " + line(s));
@@ -700,7 +754,7 @@ public class RadioService extends Service {
                 + "\n            " + m.detail + "\n");
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm != null) nm.notify(50000,
-                new Notification.Builder(this, CHANNEL).setContentTitle(m.title)
+                new Notification.Builder(this, ALERT_CHANNEL).setContentTitle(m.title)
                     .setStyle(new Notification.BigTextStyle().bigText(m.detail))
                     .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
     }
@@ -709,7 +763,7 @@ public class RadioService extends Service {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm == null) return;
         nm.notify((int) (System.currentTimeMillis() % 90000) + 20000,
-                new Notification.Builder(this, CHANNEL)
+                new Notification.Builder(this, ALERT_CHANNEL)
                     .setContentTitle(f.title)
                     .setStyle(new Notification.BigTextStyle().bigText(f.detail))
                     .setSmallIcon(android.R.drawable.stat_sys_warning)
@@ -722,6 +776,26 @@ public class RadioService extends Service {
         } catch (Throwable ignored) { }
         try (FileWriter w = new FileWriter(new File(logDir(), "wifi-observatory.tsv"))) {
             w.write(wifiMem.save());
+        } catch (Throwable ignored) { }
+    }
+
+    /**
+     * The watch's self-report, read by the scan's self-audit. This is what makes
+     * a refused listener impossible to hide: the scan can see that the radio watch
+     * attached, was refused, or never ran, instead of assuming it is fine.
+     */
+    private void writeStatus(boolean up) {
+        GnssStatus g = lastGnssStatus;
+        int sats = g == null ? 0 : g.getSatelliteCount();
+        String s = "asOf\t" + System.currentTimeMillis() + "\n"
+                + "running\t" + (up ? 1 : 0) + "\n"
+                + "radio\t" + radioWatch + "\n"
+                + "gnss\t" + gnssWatch + "\n"
+                + "sensors\t" + sensorWatch + "\n"
+                + "cells\t" + observatory.size() + "\n"
+                + "sats\t" + sats + "\n";
+        try (FileWriter w = new FileWriter(new File(logDir(), "watch-status.tsv"))) {
+            w.write(s);
         } catch (Throwable ignored) { }
     }
 
@@ -767,7 +841,7 @@ public class RadioService extends Service {
     private void alert(RadioRules.Event e) {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm == null) return;
-        Notification n = new Notification.Builder(this, CHANNEL)
+        Notification n = new Notification.Builder(this, ALERT_CHANNEL)
                 .setContentTitle(e.title)
                 .setStyle(new Notification.BigTextStyle().bigText(e.detail))
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
