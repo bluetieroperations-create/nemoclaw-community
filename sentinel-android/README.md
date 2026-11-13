@@ -36,7 +36,7 @@ nothing that a dead watch and a clean sky used to share.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 29061 bytes, sha256 `1a28ea788b821e81814d421b2c96138bda69a3508eea96f371b7abe4704b5571`,
+`dist/sentinel.apk` — 70021 bytes, sha256 `e5a9e54b055edb1b630542730257940669f5c820cb09810d6c0f54e014bef900`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
 
 The grant is optional and the app works without it, but it is what reveals screen
