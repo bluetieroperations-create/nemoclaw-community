@@ -127,14 +127,25 @@ public class Main extends Activity {
             requestPermissions(missing.toArray(new String[0]), 1);
             return;
         }
-        // Background location has to be asked for on its own, after the rest.
+        // Start recording the moment the foreground permissions are in hand. A
+        // foreground service with a location type reads cell identity on
+        // foreground location alone, so the watch does NOT need background
+        // location to run. Waiting on background location is what silently kept
+        // the watch from ever starting - it is why a whole drive recorded nothing.
+        startWatch();
+    }
+
+    /** Start the watch and harden it so Android cannot quietly stop it. */
+    private void startWatch() {
+        startForegroundService(new Intent(this, RadioService.class));
+        askBatteryExemption();
+        // Background location only matters if the screen stays off for a very long
+        // stretch; request it as a bonus, but never block the watch on it.
         if (checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{
                     android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 2);
-            return;
         }
-        startForegroundService(new Intent(this, RadioService.class));
         radioButton.postDelayed(this::refreshRadioButton, 600);
         results.removeAllViews();
         results.addView(label("Watching. Leave it running while you drive, then come back "
@@ -142,8 +153,28 @@ public class Main extends Activity {
                 + "Bluetooth link dropped, so the two can be lined up.", MUTED, 13, false));
     }
 
+    /**
+     * Ask Android to exempt this app from battery optimization. Without it, Doze
+     * can stop the foreground service mid-drive - which is what cut an earlier
+     * watch off after a few minutes. Shows the system dialog once; harmless if
+     * already exempt.
+     */
+    private void askBatteryExemption() {
+        try {
+            android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        android.net.Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            }
+        } catch (Throwable ignored) { }
+    }
+
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] granted) {
         super.onRequestPermissionsResult(code, perms, granted);
+        // Background location (code 2) is a bonus asked for after the watch is
+        // already running; its answer never blocks or stops the watch.
+        if (code == 2) { refreshRadioButton(); return; }
         boolean all = granted.length > 0;
         for (int g : granted) if (g != PackageManager.PERMISSION_GRANTED) all = false;
         if (all) { toggleRadio(); return; }

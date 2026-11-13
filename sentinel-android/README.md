@@ -36,8 +36,17 @@ nothing that a dead watch and a clean sky used to share.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 70021 bytes, sha256 `e5a9e54b055edb1b630542730257940669f5c820cb09810d6c0f54e014bef900`,
-signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy first.
+`dist/sentinel.apk` — 70021 bytes, sha256 `ddf1338ebf2a12b798801f3333ea7587b0f4c78faab178b0fdd68b1a37451bb3`,
+signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy
+first - and always pull the phone's logs before you do, so an uninstall never
+costs you data.
+
+The radio watch starts on foreground location alone (it no longer waits on
+background location, which used to stop it from starting at all) and asks to be
+exempted from battery optimization when it starts, so Doze cannot stop it
+mid-drive. `sentinel-pull.ps1` copies the logs into a fresh timestamped folder
+and reports whether the watch is actually recording - run it before any
+uninstall.
 
 The grant is optional and the app works without it, but it is what reveals screen
 capture, clipboard and overlay access. Those are app operations rather than
