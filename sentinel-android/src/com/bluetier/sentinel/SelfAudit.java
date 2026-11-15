@@ -99,11 +99,14 @@ public final class SelfAudit {
         // report nothing while the scan still read "clean". Now the scan says
         // which live eyes are open.
         Rules.LiveWatch lw = d.live;
-        c.add(live("Live radio / cell watch (barring, cell memory)", lw.radio, lw.running,
-                lw.cells + " cell(s) in memory; the telephony listeners are attached, so site "
-                + "barring and tracking-area changes are being watched.",
-                "The telephony listeners were refused, so barring, operator identity and the "
-                + "cell memory are not running - the IMSI-catcher checks cannot fire.",
+        c.add(live("Live radio / cell watch (operator, cell memory)", lw.radio, lw.running,
+                lw.cells + " cell(s) in memory; operator identity, tracking-area changes and "
+                + "the cell memory are live, so the from-memory IMSI-catcher checks can fire. "
+                + "Barring is the one piece that cannot run - it needs a privileged permission "
+                + "a sideloaded app is not allowed to hold - but nothing else in the radio "
+                + "watch depends on it.",
+                "The cell watch was refused, so operator identity and the cell memory are not "
+                + "running and the from-memory IMSI-catcher checks cannot fire.",
                 "Grant it once over USB:\n    adb shell pm grant com.bluetier.sentinel "
                 + "android.permission.READ_PHONE_STATE"));
         c.add(live("Live satellite watch (GPS spoofing & jamming)", lw.gnss, lw.running,

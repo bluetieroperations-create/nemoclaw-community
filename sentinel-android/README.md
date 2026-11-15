@@ -36,7 +36,7 @@ nothing that a dead watch and a clean sky used to share.
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 70021 bytes, sha256 `ddf1338ebf2a12b798801f3333ea7587b0f4c78faab178b0fdd68b1a37451bb3`,
+`dist/sentinel.apk` — 70021 bytes, sha256 `c6aacac32e9e548ba4c420b40965369a4b3cd1ed1aeeeb8a4abfd865ca7adb8b`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy
 first - and always pull the phone's logs before you do, so an uninstall never
 costs you data.

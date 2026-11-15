@@ -91,7 +91,8 @@ public class RadioService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TelephonyManager tm;
     private AudioManager am;
-    private TelephonyCallback callback;
+    private TelephonyCallback callback;         // basic listeners (READ_PHONE_STATE)
+    private TelephonyCallback preciseCallback;  // barring etc. (privileged; may not attach)
     private AudioDeviceCallback audioCallback;
 
     // latest state, written by callbacks and read by the sampler
@@ -156,6 +157,7 @@ public class RadioService extends Service {
         running = false;
         handler.removeCallbacks(tick);
         try { if (callback != null) tm.unregisterTelephonyCallback(callback); } catch (Throwable ignored) { }
+        try { if (preciseCallback != null) tm.unregisterTelephonyCallback(preciseCallback); } catch (Throwable ignored) { }
         try { if (lm != null && gnssCb != null) lm.unregisterGnssStatusCallback(gnssCb); } catch (Throwable ignored) { }
         try { if (lm != null && measCb != null) lm.unregisterGnssMeasurementsCallback(measCb); } catch (Throwable ignored) { }
         try { if (lm != null && locListener != null) lm.removeUpdates(locListener); } catch (Throwable ignored) { }
@@ -188,28 +190,24 @@ public class RadioService extends Service {
         am.registerAudioDeviceCallback(audioCallback, handler);
         refreshBt();
 
-        // One object implementing several listeners; the platform routes each.
-        class Cb extends TelephonyCallback implements
+        // Two callbacks, split by the permission each group needs - and this split
+        // is the whole fix for a radio watch that was blind even with
+        // READ_PHONE_STATE granted. The basic group (service state, signal, call
+        // state, 5G-NSA) needs only READ_PHONE_STATE, which can be granted over
+        // USB. The precise group (physical channel, registration failure, barring)
+        // needs READ_PRECISE_PHONE_STATE, which is signature|privileged and a
+        // sideloaded app cannot hold. Registered together, the ONE privileged
+        // listener failed the WHOLE registration, taking operator identity and the
+        // cell memory down with it. Apart, the basic group attaches and the cell
+        // watch runs; only barring is lost, and that is a platform limit, not a
+        // missing grant.
+        class Basic extends TelephonyCallback implements
                 TelephonyCallback.ServiceStateListener,
                 TelephonyCallback.SignalStrengthsListener,
-                TelephonyCallback.PhysicalChannelConfigListener,
-                TelephonyCallback.RegistrationFailedListener,
                 TelephonyCallback.CallStateListener,
-                TelephonyCallback.DisplayInfoListener,
-                TelephonyCallback.BarringInfoListener {
-
+                TelephonyCallback.DisplayInfoListener {
             @Override public void onServiceStateChanged(ServiceState s) { serviceState = s; }
             @Override public void onSignalStrengthsChanged(SignalStrength s) { signalStrength = s; }
-            @Override public void onPhysicalChannelConfigChanged(List<PhysicalChannelConfig> c) {
-                channels = c == null ? Collections.emptyList() : c;
-            }
-            @Override public void onRegistrationFailed(CellIdentity id, String plmn,
-                                                       int domain, int cause, int addl) {
-                pendingRegFail = cause;
-            }
-            @Override public void onBarringInfoChanged(BarringInfo info) {
-                latestBarring = info;
-            }
             @Override public void onCallStateChanged(int state) {
                 inCall = state != TelephonyManager.CALL_STATE_IDLE;
             }
@@ -224,11 +222,34 @@ public class RadioService extends Service {
                    || o == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED;
             }
         }
-        callback = new Cb();
+        class Precise extends TelephonyCallback implements
+                TelephonyCallback.PhysicalChannelConfigListener,
+                TelephonyCallback.RegistrationFailedListener,
+                TelephonyCallback.BarringInfoListener {
+            @Override public void onPhysicalChannelConfigChanged(List<PhysicalChannelConfig> c) {
+                channels = c == null ? Collections.emptyList() : c;
+            }
+            @Override public void onRegistrationFailed(CellIdentity id, String plmn,
+                                                       int domain, int cause, int addl) {
+                pendingRegFail = cause;
+            }
+            @Override public void onBarringInfoChanged(BarringInfo info) {
+                latestBarring = info;
+            }
+        }
+        callback = new Basic();
         try { tm.registerTelephonyCallback(ex, callback); radioWatch = "live"; }
         catch (Throwable t) {
             radioWatch = "blind";
-            append("radio.log", stamp() + "  could not attach to the radio: " + t);
+            append("radio.log", stamp() + "  could not attach the cell watch: " + t);
+        }
+        preciseCallback = new Precise();
+        try { tm.registerTelephonyCallback(ex, preciseCallback); }
+        catch (Throwable t) {
+            // Expected on a sideloaded app: barring/registration listeners are
+            // privileged. The cell watch above is unaffected.
+            append("radio.log", stamp() + "  barring/registration listeners unavailable "
+                    + "(need privileged READ_PRECISE_PHONE_STATE): " + t);
         }
 
         attachGnss(ex);
@@ -607,17 +628,34 @@ public class RadioService extends Service {
             s.cid = n.getNci(); s.pci = n.getPci(); s.tac = n.getTac();
             s.arfcn = n.getNrarfcn();
             if (s.band <= 0 && n.getBands() != null && n.getBands().length > 0) s.band = n.getBands()[0];
+            plmn(s, n.getMccString(), n.getMncString());
         } else if (id instanceof CellIdentityLte) {
             CellIdentityLte l = (CellIdentityLte) id;
             s.cid = l.getCi(); s.pci = l.getPci(); s.tac = l.getTac();
             s.arfcn = l.getEarfcn();
             if (s.band <= 0 && l.getBands() != null && l.getBands().length > 0) s.band = l.getBands()[0];
+            plmn(s, l.getMccString(), l.getMncString());
         } else if (id instanceof CellIdentityWcdma) {
             CellIdentityWcdma w = (CellIdentityWcdma) id;
             s.cid = w.getCid(); s.pci = w.getPsc(); s.tac = w.getLac(); s.arfcn = w.getUarfcn();
+            plmn(s, w.getMccString(), w.getMncString());
         } else if (id instanceof CellIdentityGsm) {
             CellIdentityGsm g = (CellIdentityGsm) id;
             s.cid = g.getCid(); s.tac = g.getLac(); s.arfcn = g.getArfcn();
+            plmn(s, g.getMccString(), g.getMncString());
+        }
+    }
+
+    /**
+     * The operator code of the serving cell, taken from the cell identity itself.
+     * The observatory keys a cell on operator + cell id, and when the service-state
+     * listener is slow or unavailable this is where the operator comes from - so a
+     * cell is remembered under a stable key instead of an empty one, which is what
+     * had the memory holding only a single cell across six days.
+     */
+    private static void plmn(RadioRules.Sample s, String mcc, String mnc) {
+        if ((s.networkPlmn == null || s.networkPlmn.isEmpty()) && mcc != null && mnc != null) {
+            s.networkPlmn = mcc + mnc;
         }
     }
 
