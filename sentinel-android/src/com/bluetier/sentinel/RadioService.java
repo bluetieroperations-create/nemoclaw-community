@@ -313,10 +313,11 @@ public class RadioService extends Service {
                     + " (" + (f.pkg == null ? "?" : f.pkg) + ")\n            " + f.detail + "\n");
             feedCorrelator(e.t, Correlator.Source.SENSOR, f.severity, "sensors: " + f.title);
             NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null) nm.notify((int) (System.currentTimeMillis() % 70000) + 40000,
+            if (nm != null) nm.notify(Math.abs(("sensor:" + f.title).hashCode()),
                     new Notification.Builder(this, ALERT_CHANNEL).setContentTitle(f.title)
                         .setStyle(new Notification.BigTextStyle().bigText(f.detail))
-                        .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
+                        .setSmallIcon(android.R.drawable.stat_sys_warning)
+                        .setAutoCancel(true).setOnlyAlertOnce(true).build());
         } catch (Throwable ignored) { }
     }
 
@@ -419,10 +420,11 @@ public class RadioService extends Service {
                     + "\n            " + f.detail + "\n");
             feedCorrelator(t, Correlator.Source.GNSS, f.severity, "satellites: " + f.title);
             NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null) nm.notify((int) (t % 80000) + 30000,
+            if (nm != null) nm.notify(Math.abs(("gnss:" + f.title).hashCode()),
                     new Notification.Builder(this, ALERT_CHANNEL).setContentTitle(f.title)
                         .setStyle(new Notification.BigTextStyle().bigText(f.detail))
-                        .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
+                        .setSmallIcon(android.R.drawable.stat_sys_warning)
+                        .setAutoCancel(true).setOnlyAlertOnce(true).build());
         }
     }
 
@@ -794,18 +796,19 @@ public class RadioService extends Service {
         if (nm != null) nm.notify(50000,
                 new Notification.Builder(this, ALERT_CHANNEL).setContentTitle(m.title)
                     .setStyle(new Notification.BigTextStyle().bigText(m.detail))
-                    .setSmallIcon(android.R.drawable.stat_sys_warning).setAutoCancel(true).build());
+                    .setSmallIcon(android.R.drawable.stat_sys_warning)
+                    .setAutoCancel(true).setOnlyAlertOnce(true).build());
     }
 
     private void alertWifi(WifiRules.Finding f) {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm == null) return;
-        nm.notify((int) (System.currentTimeMillis() % 90000) + 20000,
+        nm.notify(Math.abs(("wifi:" + f.title).hashCode()),
                 new Notification.Builder(this, ALERT_CHANNEL)
                     .setContentTitle(f.title)
                     .setStyle(new Notification.BigTextStyle().bigText(f.detail))
                     .setSmallIcon(android.R.drawable.stat_sys_warning)
-                    .setAutoCancel(true).build());
+                    .setAutoCancel(true).setOnlyAlertOnce(true).build());
     }
 
     private void saveObservatory() {
@@ -864,6 +867,7 @@ public class RadioService extends Service {
                 .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
                 .setContentIntent(pi)
                 .setOngoing(true)
+                .setLocalOnly(true)   // a status note - keep it on the phone, off a paired watch
                 .build();
     }
 
@@ -884,7 +888,10 @@ public class RadioService extends Service {
                 .setStyle(new Notification.BigTextStyle().bigText(e.detail))
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(true)   // a repeat of the same finding updates it, doesn't re-buzz
                 .build();
-        nm.notify((int) (e.t % 100000) + 10, n);
+        // Stable id per finding type: a recurring finding reuses one notification
+        // instead of stacking a new one (and re-alerting a paired watch) each time.
+        nm.notify(Math.abs(e.id.hashCode()), n);
     }
 }
