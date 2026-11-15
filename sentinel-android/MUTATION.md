@@ -75,4 +75,32 @@ residual are branches in the collector-facing logic that still want a test. The
 honest summary: the suite went from catching a third of faults to catching half
 (three-fifths of the meaningful ones), the core detection paths are pinned at
 100%, no latent bug was found, and the number - not the passing count - is what
-is written down. 142 tests now; the count was never the measure.
+is written down. 146 tests now; the count was never the measure.
+
+## Re-run 2026-11-15, after the live-watch and radio-callback changes
+
+Re-run against current source after the session that split the telephony
+callback (so the cell watch runs on READ_PHONE_STATE instead of failing whole on
+the privileged barring listener), derived the operator from the cell identity,
+and added the live-watch checks to the self-audit. Baseline green first, same
+method.
+
+**50.0% held** - 289 of 578 killed, identical to the committed number, with **no
+new survivors**. Two honest points behind that:
+
+- The new self-audit logic (the `live()` helper and the three live-watch checks)
+  is a `switch` on an enum with no comparison, boolean-literal or numeric operand,
+  so the mutation operators generate nothing for it. Mutation cannot probe it;
+  its correctness rests on the four targeted SelfAudit tests added for it, which
+  were confirmed to assert the LIVE / DEGRADED / BLIND outcomes and the
+  READ_PHONE_STATE remedy.
+- The callback split and the operator-from-cell-identity fallback live in
+  RadioService - the Android collector, outside the nine mutated rule classes -
+  so mutation does not reach them. They are verified by the build, the eval
+  false-positive/detection rates (unchanged), and the on-device `watch-status.tsv`
+  check (`radio = live`), not by mutation.
+
+So the recent changes neither moved the score nor left a new hole the suite could
+see. The surviving set is the same pre-existing one: concentrated in Rules.java
+(app scan) and RadioRules.java (radio watch), largely equivalent `0 +/- 1` and
+defensive-guard mutants, as above.
