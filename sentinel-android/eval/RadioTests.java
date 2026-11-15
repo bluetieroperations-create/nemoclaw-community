@@ -24,6 +24,7 @@ public class RadioTests {
         trackingAreaChangeWithCorroborationIsHigh();
         manyCellsChangingIsAReplan();
         foreignNetworkWithoutRoamingScores();
+        sameCarrierOperatorCodeWithoutRoamingIsNotAnAlert();
         alertsHaveACooldown();
         strongSignalPoorQualityIsAnInterferenceNote();
         strongSignalGoodQualityIsSilent();
@@ -176,6 +177,22 @@ public class RadioTests {
         }
         check("serving a network your SIM does not belong to, without roaming, scores",
                 any(feed(w, run), "R01"));
+    }
+
+    static void sameCarrierOperatorCodeWithoutRoamingIsNotAnAlert() {
+        // The real-world false alarm: a T-Mobile SIM (310-240) on a T-Mobile cell
+        // (310-260). Both are the same carrier, the phone's equivalent-home-PLMN
+        // list keeps it "not roaming", and this must NOT read as a cell
+        // manipulating identity. Only a different COUNTRY code should.
+        Watcher w = new Watcher();
+        List<Sample> run = new ArrayList<>();
+        for (int i = 0; i < 16; i++) {
+            Sample s = normal(i);
+            s.simPlmn = "310240"; s.networkPlmn = "310260"; s.roaming = false;
+            run.add(s);
+        }
+        check("a same-country operator-code difference without roaming does not alert",
+                !any(feed(w, run), "R01"));
     }
 
     static void alertsHaveACooldown() {

@@ -330,10 +330,20 @@ public final class RadioRules {
                 }
             }
 
+            // Only a different COUNTRY code (MCC) counts. One carrier owns many
+            // operator codes within a country - T-Mobile US alone broadcasts
+            // 310-240, 310-260 and a dozen more - and a SIM's equivalent-home-PLMN
+            // list is exactly why the phone stays "not roaming" across them. So a
+            // same-country code difference is that ordinary multi-PLMN operation,
+            // which millions of phones see daily, NOT a cell manipulating identity.
+            // A different MCC while the phone insists it is not roaming is the real
+            // anomaly. (Earlier this fired on every T-Mobile phone whose SIM and
+            // serving cell held two of the carrier's own codes - a false alarm.)
             if (!s.simPlmn.isEmpty() && !s.networkPlmn.isEmpty()
-                    && !s.simPlmn.equals(s.networkPlmn) && !s.roaming) {
+                    && !s.simPlmn.equals(s.networkPlmn) && !s.roaming
+                    && !sameCountry(s.simPlmn, s.networkPlmn)) {
                 add(s, "plmn", 4, "your SIM belongs to " + s.simPlmn + " but the cell advertises "
-                        + s.networkPlmn + " and the phone is not roaming");
+                        + s.networkPlmn + ", a different country code, and the phone is not roaming");
             }
 
             // Being on 2G or 3G is ordinary. Being on 2G or 3G with a strong
@@ -475,6 +485,13 @@ public final class RadioRules {
     }
 
     // ------------------------------------------------------------------ naming
+
+    /** True when two PLMNs share a mobile country code (the first three digits).
+     *  A carrier commonly uses several operator codes within one country, so a
+     *  same-country difference is ordinary multi-PLMN operation, not a tell. */
+    static boolean sameCountry(String a, String b) {
+        return a.length() >= 3 && b.length() >= 3 && a.regionMatches(0, b, 0, 3);
+    }
 
     /** Short form, for a log line that has to stay scannable. */
     public static String shortBand(int band, int khz) {
