@@ -257,6 +257,8 @@ public class Main extends Activity {
                         + (t.getMessage() == null ? "" : ": " + t.getMessage());
             }
             final List<Rules.Finding> found = Rules.evaluate(d);
+            found.addAll(changesSince(d));          // what gained access since last scan
+            java.util.Collections.sort(found);
             final int appCount = d.apps.size();
             final SelfAudit.Report audit = SelfAudit.assess(d);
             runOnUiThread(() -> {
@@ -264,6 +266,37 @@ public class Main extends Activity {
                 render(found, appCount, audit);
             });
         }).start();
+    }
+
+    /**
+     * Change detection. Compares this scan's sensitive-access picture against the
+     * baseline from last time, reports anything that newly gained access, and
+     * saves the fresh snapshot as the new baseline. The first scan records the
+     * baseline and raises nothing but a note, so nothing you already have reads
+     * as new.
+     */
+    private List<Rules.Finding> changesSince(Rules.Dev d) {
+        List<Rules.Finding> out = new ArrayList<>();
+        try {
+            java.io.File f = new java.io.File(getExternalFilesDir(null), "baseline.tsv");
+            ChangeRules.Baseline prev = f.isFile()
+                ? ChangeRules.load(new String(java.nio.file.Files.readAllBytes(f.toPath()),
+                        java.nio.charset.StandardCharsets.UTF_8))
+                : new ChangeRules.Baseline();
+            if (!prev.established) {
+                out.add(new Rules.Finding("X00", "LOW", "Baseline recorded for change detection",
+                        null, "This scan recorded which apps hold sensitive access - screen "
+                        + "reading, notification access, the microphone, camera, SMS, device "
+                        + "administrator and interception certificates. From the next scan on, "
+                        + "anything that newly gains one of these is flagged here.", true));
+            } else {
+                out.addAll(ChangeRules.compare(prev, d));
+            }
+            try (java.io.FileWriter w = new java.io.FileWriter(f)) {
+                w.write(ChangeRules.save(ChangeRules.snapshot(d)));
+            }
+        } catch (Throwable ignored) { }
+        return out;
     }
 
     // -------------------------------------------------------------- collector

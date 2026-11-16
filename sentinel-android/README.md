@@ -31,12 +31,29 @@ writes a periodic heartbeat to the radio log, so its silence is confirmable - a
 line of satellites in view, or a plain statement that it is off - instead of the
 nothing that a dead watch and a clean sky used to share.
 
+## What changed since last time
+
+A point-in-time scan answers "is anything wrong now". For a targeted threat the
+more useful question is "did anything gain access to me since I last looked", and
+that is a separate module. Each scan records who holds the capabilities that
+matter - the accessibility binding, notification access, device administrator,
+screen capture, the microphone/camera/SMS/call-log permissions, user-added
+certificates - and compares against the baseline from last time. A planted
+implant, or a familiar app turned against you, has to cross one of those lines,
+and this reports the crossing. The first scan records the baseline and raises
+nothing; only a genuine delta is reported; a recognised product gaining the
+access it is known for is a note; and the weighting follows the threat model - a
+brand-new app holding a capability is expected, while an app that was ALREADY
+here suddenly reading your screen is the single clearest sign something turned, so
+that case scores highest. Same discipline as the rest: no Android imports in the
+comparison, measured on a JVM (ChangeTests).
+
 ## Install
 
     adb install -r dist/sentinel.apk
     adb shell pm grant com.bluetier.sentinel android.permission.GET_APP_OPS_STATS
 
-`dist/sentinel.apk` — 70021 bytes, sha256 `96e6270cdad91512e7d8a2d1926726458e686c94ed1ca6a3a684b67079dfaf7d`,
+`dist/sentinel.apk` — 74117 bytes, sha256 `44443d63b2e69bf07a3b4d68f4e319a118afad57f111b1c88bcf19fce66a2358`,
 signed, verifies for API 31-35. Debug-signed, so uninstall any earlier copy
 first - and always pull the phone's logs before you do, so an uninstall never
 costs you data.
@@ -74,6 +91,7 @@ SDK with build-tools 35 and platform 35. No Gradle and no network.
     java -cp /tmp/e SelfAuditTests   # 11 tests, the coverage self-audit incl. the live watches
     java -cp /tmp/e GuardTests       # 8 assertion guards over the eval bounds
     java -cp /tmp/e BoundaryTests    # 14 threshold edge tests
+    java -cp /tmp/e ChangeTests      # 11 tests, change detection since last scan
     java -cp /tmp/e Eval 4000    # false positives and detection, synthetic devices
     java -cp /tmp/e DriveEval 500  # false positives and detection, synthetic drives
 
